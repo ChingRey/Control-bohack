@@ -26,6 +26,11 @@
 | 当前代码检查 | POST `…/verify` | `{}` | 检查trim/条件判断与localStorage调用的源码标记，不执行行为测试 |
 | 改进申请 | POST `…/upgrade-proposals` | confirmed: true | 检查候选掌握、迁移证据、教师建议、代码版本；追加pending_review申请 |
 | 历史列表 | GET `/api/tasks` | 无 | id/title列表；当前页面不展示历史选择器 |
+| Project knowledge | GET `/api/tasks/:id/learning` | none | Learning data plus this task's project knowledge |
+| Search knowledge | POST `/api/tasks/:id/knowledge/search` | `query`, optional `limit` (1-5) | Approved project facts/patterns for this task only |
+| Review knowledge | POST `/api/tasks/:id/knowledge/:candidate_id/review` | `confirmed: true`, `decision`, `reviewer`, optional `note` | Approve/reject pending entries or withdraw approved entries |
+
+Candidate entries require exact quotes from student messages and start as pending. Search returns only approved entries for the same task and marks code-hash mismatches stale. `reviewer` is audit text, not authenticated identity; keep this prototype local. See `docs/KNOWLEDGE_RETRIEVAL.md`.
 
 当前文件白名单：`app.js`、`index.html`、`style.css`。技术topic：`page-structure`、`events`、`input`、`storage`。前端配置入口接受的模型名以 backend.py 的白名单为准；可用性仍由用户账户及服务决定。
 
@@ -93,3 +98,37 @@
 - 模型失败一般保存在202任务的teaching_run中，不是把最初POST改成500。
 
 网页预览使用 `preview_url`，优先主端口+1，冲突则自动选空闲端口；独立预览服务不提供API。前端iframe校验上报来源、窗口和任务ID。只支持静态网页，不支持任意Python/Node命令。
+
+
+## 新增：记忆、画像与两条成长路线
+
+| 方法与任务路径 | 输入 | 当前作用 |
+|---|---|---|
+| GET `…/learning` | 无 | memory范围与接续、learning画像、经验、候选Skill和申请 |
+| GET `…/learning-record.md` | 无 | 由当前数据库记录生成Markdown，页面可下载 |
+| POST `…/experiences/:card_id/confirm` | confirmed: true | 确认草稿或重新启用已停用经验 |
+| POST `…/experiences/:card_id/disable` | confirmed: true | 停用已确认经验；下次不再提供给Coding |
+| POST `…/experiences/:card_id/reject` | confirmed: true | 不保留候选经验，历史仍可追溯 |
+| POST `…/skill-unlocks/:skill_id` | confirmed: true | 相关能力证据满足时追加待复核申请；不安装Skill |
+
+快照增加teaching.memory、teaching.learning、learning_overview。profile含5项能力，level为unknown/needs_help/supported/independent/transfer_candidate；所有状态都是provisional_not_certified。不能把independent直接展示为“已认证掌握”。
+
+当前候选Skill均validation_status=not_evaluated，can_install=false。学生证据可申请复核与Agent能力已验证分开。没有接受客户端直接设置verified或installed的接口。
+
+教学结构化输出可增加learning_update，包含observations、experiences、prompt_review，详见教师提示词。引用必须来自本轮实际提供的学生原话并与原文一致；不合法时丢弃该学习更新，不丢弃正常教学回复。每个观察和经验记录source_turn、code_hash与证据编号。
+
+Coding接口暂为step(task, instruction, learning_context=None)。后端从学生已确认经验中按标签选最多3条，传入{rules,skills,scope,note}。当前sample仅记录rule_versions，applied=false；A同学接真实Coding时应明确把资料加入实际请求，并记录使用结果，不能仅因为传参存在就宣布进化。
+
+已有upgrade-proposals仍兼容，它是单轮旧建议出口，不等同于新Skill门槛。新开发应使用catalog与skill-unlocks，不把两者混为安装接口。
+
+
+## OpenAI配置
+
+POST /api/settings/teaching接收：provider（deepseek/openai，省略仍为deepseek）、api_key、model。OpenAI必须显式填写模型ID；DeepSeek省略model默认deepseek-flash。返回configured与不含密钥的provider元信息（mode、provider、model、protocol）。configured只表示保存完成，不证明账户权限和模型可用。
+
+OpenAI映射到固定Responses端点，DeepSeek映射到固定Chat Completions端点；不接受任意base_url。切换时必须填写对应服务商的密钥，页面切换选项会清空密钥输入；不会回显任何已保存密钥。
+
+
+## Manual knowledge experiment panel
+
+POST `/api/tasks/:id/knowledge/manual` accepts `title`, `content`, `confirmed:true` and creates a pending manual record with saved original evidence. POST `/api/tasks/:id/knowledge/settings` accepts `enabled:boolean` to control knowledge injection into future Coding calls and preflight. Search preview is available even when injection is disabled. See [manual experiment instructions](MANUAL_KNOWLEDGE_EXPERIMENT.md).

@@ -1,0 +1,40 @@
+{
+  "mode": "offline_fixture_not_real_model",
+  "messages": 201,
+  "old_history_characters": 73756,
+  "new_full_context_characters": 14581,
+  "summary_batches": [
+    [
+      0,
+      27
+    ],
+    [
+      28,
+      54
+    ],
+    [
+      55,
+      81
+    ],
+    [
+      82,
+      108
+    ],
+    [
+      109,
+      135
+    ],
+    [
+      136,
+      162
+    ],
+    [
+      163,
+      188
+    ]
+  ],
+  "current_prompt_preserved": true,
+  "raw_history_preserved": true,
+  "covered_through": 188,
+  "limitation": "摘要文本由固定测试函数生成，只验证数据范围和上下文组织，不评估真实摘要质量或教学效果。"
+}

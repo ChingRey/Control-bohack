@@ -122,3 +122,12 @@ POST /api/tasks/:id/teaching/knowledge 接收topic和choice（learn/later）；�
 文件保存先写临时文件，成功后替换原文件，避免写入失败先清空旧代码。读写失败通过接口返回明确错误；不支持的文件编码返回UTF-8提示。
 
 预览上报页面加载与JS异常，前端检查iframe来源、窗口与任务ID；下一次学生消息将最近运行观察一并交给教师，明确标记为浏览器上报，不等同于通过行为测试。原来的静态标记检查仍保持独立。尚未实现命令执行环境、构建工具和通用后端项目预览。
+
+
+## 记忆与学习更新（2026-11-13）
+
+新增agents/memory.py、agents/learning.py和learning_assets/catalog.json。按连续旧消息段整理摘要，当前提示词和问题原文单独保留；初始context有80000 JSON字符限制，不再注入80条额外学生发言。teacher记忆、学生观察、个人经验分开。
+
+模型可返回learning_update；学生原话引用无效时只拒绝该学习更新并记录警告。经验保存为draft，需要学生确认；可停用。能力状态是模型建议，尚无人工认证。候选Skill与能力画像对应，但Skill未验证、未安装。
+
+具体预算、SDK比较、真实API结果和未完成事项见[MEMORY_IMPLEMENTATION](MEMORY_IMPLEMENTATION.md)。首次合成实验教学请求失败后，已完成摘要被保留；重试完成，再一次交互产生有效能力观察、提示词反馈与经验草稿。尚未验证真实学生学习效果。

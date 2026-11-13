@@ -2,20 +2,25 @@
 
 一个教人 Vibe Coding 的本地工作台：学生指挥 Coding Agent 开发，Teaching Agent 帮助学生理解技术、审查计划和代码，并记录学习过程。
 
-**当前重点：验证教学交互。Teaching 可接 DeepSeek；Coding 仍是固定待办示例，没有接真实编程模型。**
+**当前重点：验证教学交互。Teaching 可接 DeepSeek / OpenAI；Coding 同时提供固定待办示例和可配置的 OpenCode 分阶段执行模式。**
+
+## Project knowledge retrieval
+
+Teaching can propose evidence-linked project knowledge, which remains pending until reviewed. Approved records are retrieved lexically for the same task and passed to OpenCode with provenance and stale-code flags. This is not embedding-based RAG, does not install Skills, and has no benchmark proving capability improvement. See [KNOWLEDGE_RETRIEVAL](docs/KNOWLEDGE_RETRIEVAL.md).
 
 ## 已经实现了什么
 
 | 功能 | 当前做法 |
 |---|---|
-| 从需求到计划 | 初始只有“设置计划”；输入需求后生成固定草稿，学生讨论、编辑并确认后才能执行 |
-| 分步开发、停下审查 | 每次确认只执行一步，真实修改本地项目文件，然后暂停 |
+| 从需求到计划 | 示例模式使用固定待办计划；OpenCode 模式可基于需求生成草稿，学生讨论并确认后分阶段执行 |
+| 分步开发、停下审查 | 示例模式固定写入步骤；OpenCode 在隔离项目副本中执行已确认阶段，完成后暂停 |
 | 连续教学对话 | 教师能看两侧聊天、需求、计划、源码、改动和学习记录；按当前情况选择追问、讲解、提示、总结或迁移检查 |
 | 技术选学 | 页面结构、事件、输入处理、本地存储；可选“学一下”或“稍后”，不阻挡开发 |
 | 看代码和运行结果 | 文件编辑保存、真实网页预览、页面加载与 JavaScript 异常反馈 |
-| 学习记录 | SQLite 保存聊天、教学安排、学生证据、修改记录和待复核建议，刷新后可继续；内置教学示例还绑定固定策略版本并追加记录教学事件 |
-| 思维导图和布局 | 教师输出结构化导图；前端画 SVG；面板宽高可拖动，教程安排默认折叠 |
-| 能力升级出口 | 证据满足条件后可创建待复核建议；**尚未安装 Skill，也没有实现候选教学策略分析、对照试用或策略回退** |
+| 学习记录与记忆 | SQLite保存聊天、学习记录、经验及记忆版本；可导出Markdown，刷新后继续。原始对话仍是证据来源 |
+| 项目知识检索 | 已批准知识按项目隔离并以词项相关性检索，带版本和源码变化标记；不是向量RAG，效果尚未基准验证 |
+| 能力画像与个人经验 | 五项能力记录待复核表现；经验需学生确认后才可提供给Coding，也可停用 |
+| Coding能力出口 | 候选Skill可申请复核；尚未自动安装，Coding效果未验证，不能宣称能力提升 |
 
 ## 整个流程
 
@@ -36,7 +41,7 @@
 python -X utf8 backend.py --port 8772
 ```
 
-打开 http://127.0.0.1:8772 ，点击“连接 DeepSeek”输入自己账户可用的配置。密钥只在后端进程中保存，重启需重填；代码与对话会发送到配置的模型服务。没有配置时为明确标注的固定示例回复。
+打开 http://127.0.0.1:8772 ，点击“连接模型”，选择 DeepSeek 或 OpenAI，填写自己的 API Key 和账户可用的模型 ID。密钥只在后端进程中保存，重启需重填；代码与对话会发送到配置的模型服务。没有配置时为明确标注的固定示例回复。
 
 ```powershell
 python -m unittest discover -s tests -p "test_*.py" -v
@@ -53,8 +58,12 @@ control/
 ├─ backend.py              # HTTP 接口、流程协调、SQLite、文件与预览服务
 ├─ agents/
 │  ├─ coding.py            # 固定示例编程执行器，后续替换真实 Coding Agent
-│  ├─ teaching.py          # 教学上下文、模型调用、只读工具、校验与课程记录
-│  └─ teaching_assets/     # 教师提示词、5份教学 Skill
+│  ├─ teaching.py          # 教学上下文、只读工具、校验与课程记录
+│  ├─ providers.py         # DeepSeek Chat Completions / OpenAI Responses 接口适配
+│  ├─ memory.py           # 分段摘要、原话选择、范围记录与Markdown导出
+│  ├─ learning.py         # 能力观察、经验确认/停用、Skill申请
+│  ├─ learning_assets/    # 候选Skill与能力的对应表
+│  └─ teaching_assets/     # 教师提示词、摘要提示词、5份教学 Skill
 ├─ frontend/               # 原生 HTML / CSS / JavaScript 工作台
 ├─ tests/                  # 接口、记录保护、教学校验等测试
 ├─ docs/
@@ -71,3 +80,25 @@ control/
 给组员发 `dist/Control-source.zip` 即可；在本目录运行 `python scripts/package.py` 可重新打包。包含源码、提示词、教学 Skill、测试和文档，不含本机聊天、项目记录或缓存。
 
 开发先读 [AGENTS.md](AGENTS.md)，接接口读 [docs/API.md](docs/API.md)，调整教学读 [docs/TEACHING.md](docs/TEACHING.md)。当前仅供本机实验，没有账户系统、通用代码执行环境或公网部署能力。
+
+本轮实现与验证见 [MEMORY_IMPLEMENTATION](docs/MEMORY_IMPLEMENTATION.md)；原始设计见 [MEMORY_DESIGN](docs/MEMORY_DESIGN.md)。主程序仍无第三方依赖，LangMem SDK只用于可选对照实验。
+
+## 本轮验证到哪里
+
+41项自动测试通过；201条合成消息的离线实验验证了原话保留、当前提示词保留和输入量控制。真实DeepSeek实验已产生历史摘要、提示词反馈、能力观察与待确认经验，并验证确认/停用。第一次教学请求失败，保留摘要后重试完成；原始失败也记录在实验报告中。
+
+这些是小样本集成验证，不证明学习评价准确、教学长期有效或Coding能力提升。Coding目前仅接收并记录经验输入，不按经验改变固定代码；没有自动安装Skill。
+
+在右侧“教程安排 → 学习记录·经验与能力”查看；新学习记录出现依赖模型按结构返回有效证据，并非每轮一定产生。
+
+## OpenAI API Key接入
+
+在“连接模型”选择OpenAI，填写API Key和模型ID，再保存。必须使用该账户可调用、支持工具调用与JSON输出的模型；不会替你猜测模型权限。保存配置不等于验证成功，点击“审查代码”才会实际调用。
+
+OpenAI使用官方Responses API，记忆摘要也使用同一服务商；不需要登录Codex或读取Codex凭据。此接入只切换Teaching模型，Coding依然是固定示例。提供商URL固定，密钥不写入数据库或浏览器持久化。
+
+当前共53项自动测试；OpenAI网络部分使用模拟响应验证，真实账户调用需本机填写密钥后验证。详见[OpenAI接入说明](docs/OPENAI_SETUP.md)。
+
+## OpenCode 本机运行
+
+Windows 安装、千问 DashScope 配置与首次调用步骤见 [docs/OPENCODE_LOCAL_SETUP.md](docs/OPENCODE_LOCAL_SETUP.md)。
