@@ -27,3 +27,10 @@ class WorkflowTests(unittest.TestCase):
         w.inspect_phase(t,w.prepare(t,'x'))
         self.assertFalse(w.state(t)['loads'][0]['submitted'])
         self.assertFalse(w.state(t)['loads'][0]['applied'])
+
+    def test_only_backend_supplied_knowledge_is_forwarded(self):
+        t=self.task();record={'id':'kb-1','revision':2,'content':'Reviewed project decision'}
+        payload=w.prepare(t,'phase task',{'rules':[],'skills':[{'id':'unverified'}]},[record])
+        self.assertEqual(payload['project_knowledge'],[record])
+        self.assertIn('not instructions',payload['project_knowledge_policy'])
+        self.assertEqual(payload['learning_context']['skills'],[])

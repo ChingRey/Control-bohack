@@ -25,6 +25,11 @@
 | 当前代码检查 | POST `…/verify` | `{}` | 检查trim/条件判断与localStorage调用的源码标记，不执行行为测试 |
 | 改进申请 | POST `…/upgrade-proposals` | confirmed: true | 检查候选掌握、迁移证据、教师建议、代码版本；追加pending_review申请 |
 | 历史列表 | GET `/api/tasks` | 无 | id/title列表；当前页面不展示历史选择器 |
+| Project knowledge | GET `/api/tasks/:id/learning` | none | Learning data plus this task's project knowledge |
+| Search knowledge | POST `/api/tasks/:id/knowledge/search` | `query`, optional `limit` (1-5) | Approved project facts/patterns for this task only |
+| Review knowledge | POST `/api/tasks/:id/knowledge/:candidate_id/review` | `confirmed: true`, `decision`, `reviewer`, optional `note` | Approve/reject pending entries or withdraw approved entries |
+
+Candidate entries require exact quotes from student messages and start as pending. Search returns only approved entries for the same task and marks code-hash mismatches stale. `reviewer` is audit text, not authenticated identity; keep this prototype local. See `docs/KNOWLEDGE_RETRIEVAL.md`.
 
 当前文件白名单：`app.js`、`index.html`、`style.css`。技术topic：`page-structure`、`events`、`input`、`storage`。前端配置入口接受的模型名以 backend.py 的白名单为准；可用性仍由用户账户及服务决定。
 

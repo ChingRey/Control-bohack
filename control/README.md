@@ -4,6 +4,10 @@
 
 **当前重点：验证教学交互。Teaching 可接 DeepSeek / OpenAI；Coding 仍是固定待办示例，没有接真实编程模型。**
 
+## Project knowledge retrieval
+
+Teaching can propose evidence-linked project knowledge, which remains pending until reviewed. Approved records are retrieved lexically for the same task and passed to OpenCode with provenance and stale-code flags. This is not embedding-based RAG, does not install Skills, and has no benchmark proving capability improvement. See [KNOWLEDGE_RETRIEVAL](docs/KNOWLEDGE_RETRIEVAL.md).
+
 ## 已经实现了什么
 
 | 功能 | 当前做法 |

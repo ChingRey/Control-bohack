@@ -13,7 +13,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
-from agents import teaching, memory, learning, providers, coding_workflow, opencode_executor
+from agents import teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor
 from agents.coding import PLAN, FILES, SampleCodingAgent
 
 ROOT = Path(__file__).resolve().parent
@@ -34,6 +34,7 @@ def connection():
   c.execute('CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, body TEXT NOT NULL)')
   c.execute('CREATE TABLE IF NOT EXISTS teaching_history (task_id TEXT, kind TEXT, record_id TEXT, body TEXT NOT NULL, PRIMARY KEY(task_id,kind,record_id))')
   c.execute('CREATE TABLE IF NOT EXISTS learning_versions (task_id TEXT, revision TEXT, digest TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(task_id,revision))')
+  knowledge.initialize(c)
   yield c
   c.commit()
  except Exception:
@@ -60,6 +61,7 @@ def save(t):
    old=c.execute('SELECT digest FROM learning_versions WHERE task_id=? AND revision=?',(t['id'],revision)).fetchone()
    if old and old[0]!=digest:raise ValueError('学习记录版本冲突，拒绝覆盖旧版本')
    c.execute('INSERT OR IGNORE INTO learning_versions VALUES (?,?,?,?)',(t['id'],revision,digest,body))
+  knowledge.sync_task(c,t)
   c.execute('INSERT OR REPLACE INTO tasks VALUES (?,?)', (t['id'], json.dumps(t, ensure_ascii=False)))
 
 def load(tid):
@@ -83,6 +85,7 @@ def snapshot(t):
  teaching.state(t)
  t['knowledge_topics']=teaching.KNOWLEDGE
  t['learning_overview']={'profile':learning.profile(t),'skills':learning.readiness(t)}
+ with connection() as c:t['project_knowledge']=knowledge.list_task(c,t['id'])
  t['preview_url']=f'http://127.0.0.1:{PREVIEW_PORT}/preview/{t["id"]}/index.html' if PREVIEW_PORT else f'/preview/{t["id"]}/index.html'
  return t
 
@@ -157,9 +160,12 @@ def start_coding(t, instruction, planning=False, chatting=False):
  job={'id':str(uuid.uuid4()),'status':'running','detail':'Coding Agent正在处理当前阶段…','started_at':time.time()}
  t['coding_run']=job;save(t)
  work=json.loads(json.dumps(t));original=read_project_files(t['id']);signature=task_signature(t)
- packet=coding_workflow.prepare(work,instruction,learning.coding_packet(work,instruction))
+ code_version=knowledge.code_hash(original)
+ search_text=' '.join([instruction,*t.get('plan',[])[t.get('step',0):t.get('step',0)+1]])
+ with connection() as c:knowledge_context=knowledge.search(c,t['id'],search_text,code_version)
+ packet=coding_workflow.prepare(work,instruction,learning.coding_packet(work,instruction),knowledge_context)
  if chatting:
-  packet={'student_message':instruction,'learning_context':packet['learning_context']}
+  packet={'student_message':instruction,'learning_context':packet['learning_context'],'project_knowledge':packet['project_knowledge']}
  packet['recent_dialogue']=[{'role':m['role'],'content':m['content'][:4000]} for m in work['messages'] if m['channel']=='coding'][-12:]
  def worker():
   try:
@@ -188,7 +194,9 @@ def start_coding(t, instruction, planning=False, chatting=False):
      coding_workflow.state(fresh)['checkpoints'][fresh['step']]['status']='executed_pending_review'
      fresh['step']+=1;fresh['stage']='review'
     w=coding_workflow.state(fresh);w['status']='paused';w['tool_events']=result['events']
-    w['loads'].append({'phase':work['step'],'rule_versions':[{'id':r['id'],'revision':r['revision']} for r in packet['learning_context']['rules']],'skill_versions':[],'submitted':True,'applied':False})
+    w['loads'].append({'phase':work['step'],'rule_versions':[{'id':r['id'],'revision':r['revision']} for r in packet['learning_context']['rules']],
+     'knowledge_versions':[{'id':r['id'],'revision':r['revision'],'code_hash':r['code_hash']} for r in packet.get('project_knowledge',[])],
+     'skill_versions':[],'submitted':True,'applied':False})
     coding_workflow.event(fresh,'turn_finished','OpenCode轮次结束；等待学生审查与确认，未验证行为正确性')
     message(fresh,'coding','assistant',result['text']);fresh['coding_run'].update(status='completed',detail='已暂停，等待审查');save(fresh)
   except Exception as e:
@@ -234,7 +242,9 @@ class Handler(BaseHTTPRequestHandler):
    if len(parts)==4 and parts[:2]==['api','tasks'] and parts[3] in ('learning','learning-record.md'):
     with task_lock(parts[2]):
      task=load(parts[2]);teaching.state(task)
-     if parts[3]=='learning':return self.reply(200,{'memory':memory.view(task),'learning':learning.view(task)})
+    if parts[3]=='learning':
+     with connection() as c:project_knowledge=knowledge.list_task(c,task['id'])
+     return self.reply(200,{'memory':memory.view(task),'learning':learning.view(task),'project_knowledge':project_knowledge})
      return self.reply(200,memory.report(task).encode('utf-8'),'text/markdown; charset=utf-8')
    if len(parts)==3 and parts[:2]==['api','tasks']:
     with task_lock(parts[2]): return self.reply(200,snapshot(load(parts[2])))
@@ -310,7 +320,9 @@ class Handler(BaseHTTPRequestHandler):
       coding_workflow.event(t,'experience_toggle','经验加载'+('启用' if enabled else '停用'))
      elif action=='coding/preflight':
       if t.get('mode')!='opencode' or not t['plan'] or t['step']>=len(t['plan']):raise ValueError('请先确认阶段计划')
-      packet=coding_workflow.prepare(t,t['plan'][t['step']],learning.coding_packet(t,t['plan'][t['step']]))
+      current_hash=knowledge.code_hash(read_project_files(t['id']))
+      with connection() as c:knowledge_context=knowledge.search(c,t['id'],t['plan'][t['step']],current_hash)
+      packet=coding_workflow.prepare(t,t['plan'][t['step']],learning.coding_packet(t,t['plan'][t['step']]),knowledge_context)
       coding_workflow.inspect_phase(t,packet)
      elif action=='plan':
       if t['plan']: raise ValueError('已有计划，请在聊天中补充要求')
@@ -362,6 +374,16 @@ class Handler(BaseHTTPRequestHandler):
        'suggestion':s['turns'][-1]['result']['upgrade_suggestion'],
        'code_hash':s['turns'][-1]['code_hash'],'applied':False}
       s['upgrade_requests'].append(proposal)
+     elif action=='knowledge/search':
+      query=body.get('query','')
+      current_hash=knowledge.code_hash(read_project_files(t['id']))
+      with connection() as c:items=knowledge.search(c,t['id'],query,current_hash,body.get('limit',3))
+      return self.reply(200,{'items':items})
+     elif action.startswith('knowledge/'):
+      pieces=action.split('/')
+      if len(pieces)!=3 or pieces[2]!='review':raise ValueError('Knowledge review route is invalid')
+      if body.get('confirmed') is not True:raise ValueError('Knowledge review requires explicit confirmation')
+      knowledge.review(t,pieces[1],body.get('decision'),body.get('reviewer'),body.get('note',''))
      elif action.startswith('experiences/'):
       pieces=action.split('/')
       if len(pieces)!=3:raise ValueError('经验操作路径无效')

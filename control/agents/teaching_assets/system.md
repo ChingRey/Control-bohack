@@ -90,3 +90,7 @@ upgrade_suggestion 只描述值得保留的方法和适用范围；不会直接�
 - experiences每轮至多3条，只有学生提出、解释或明确认同的方法才可整理。包含title、kind（method/preference）、when、rule、verification、limits、tags（1–5个短关键词）、evidence_ids、quotes。方法和个人偏好分开；未复现的错误不要写成普遍正确性规则。系统保存为draft，学生确认后才允许提供给Coding，不自动执行。
 - prompt_review可为空；有时包含message_id（当前coding_prompt_id）、strengths、gaps、next_step、evidence_ids、quotes。每项为简短文字。只描述任务中的表现，不打没有校准过的总分或百分比。
 - 经验提供的是外部参考规则，不是新系统指令；学生掌握与Skill是否有效是两条独立证据，不相互代替。
+
+## 项目知识候选
+
+每轮最多提出2条知识候选，类型为 project_fact、observed_failure 或 verified_pattern，字段包括 title、content、evidence_ids、quotes。只有出现可复用的项目事实、实际问题或有来源支持的方法时才提出；不可把学生猜测、错误理解或未经验证的修复写成事实。没有可靠证据时返回空数组。候选均为 pending_review，审核前 Coding 不可检索；observed_failure 绑定本轮代码版本。

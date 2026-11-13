@@ -9,7 +9,7 @@ LEVELS = ('needs_help', 'supported', 'independent', 'transfer_candidate')
 
 def state(task):
     return task.setdefault('teaching', {}).setdefault('learning', {'schema_version': 1, 'revision': 0,
-        'observations': [], 'experiences': [], 'events': [], 'unlock_requests': [], 'coding_loads': []})
+        'observations': [], 'experiences': [], 'knowledge_candidates': [], 'events': [], 'unlock_requests': [], 'coding_loads': []})
 
 def references(item, ctx):
     ids = item.get('evidence_ids')
@@ -33,7 +33,7 @@ def text(item, key, limit=600):
         raise ValueError('学习字段无效：'+key)
 
 def validate(update, ctx):
-    if not isinstance(update, dict) or set(update)-{'observations','experiences','prompt_review'}:
+    if not isinstance(update, dict) or set(update)-{'observations','experiences','knowledge_candidates','prompt_review'}:
         raise ValueError('学习更新格式无效')
     valid = {c['id'] for c in CATALOG['capabilities']}
     for key in ('observations','experiences'):
@@ -55,6 +55,16 @@ def validate(update, ctx):
                 if item.get('kind') not in ('method','preference'):raise ValueError('经验要区分方法与个人偏好')
                 tags=item.get('tags')
                 if not isinstance(tags,list) or not 1<=len(tags)<=5 or any(not isinstance(x,str) or not 1<=len(x)<=30 for x in tags):raise ValueError('经验标签无效')
+    candidates=update.get('knowledge_candidates',[])
+    if not isinstance(candidates,list) or len(candidates)>2:
+        raise ValueError('Each teaching turn may propose at most two knowledge candidates')
+    for item in candidates:
+        if not isinstance(item,dict) or set(item)-{'type','title','content','evidence_ids','quotes'} or item.get('type') not in ('project_fact','observed_failure','verified_pattern'):
+            raise ValueError('Knowledge candidate type is invalid')
+        references(item,ctx)
+        text(item,'title',200);text(item,'content',1200)
+        if item['type']=='observed_failure' and not ctx.get('code_hash'):
+            raise ValueError('Observed failures must be bound to a code version')
     review=update.get('prompt_review')
     if review is not None:
         references(review,ctx)
@@ -72,6 +82,13 @@ def apply(task, update, turn_id, code_hash):
                        status='draft' if key=='experiences' else 'model_suggestion',revision=1)
             if key=='observations':row['independence_verified']=False
             s[key].append(row)
+    for item in update.get('knowledge_candidates',[]):
+        from datetime import datetime, timezone
+        row=copy.deepcopy(item)
+        row.update(id=str(uuid.uuid4()),source_turn=turn_id,code_hash=code_hash,
+                   status='pending_review',revision=1,created_at=datetime.now(timezone.utc).isoformat(),
+                   verified=False)
+        s.setdefault('knowledge_candidates',[]).append(row)
     if update.get('prompt_review') is not None:
         s['prompt_review']={**copy.deepcopy(update['prompt_review']),'source_turn':turn_id,'code_hash':code_hash,'status':'model_suggestion'}
     if update:s['revision']+=1

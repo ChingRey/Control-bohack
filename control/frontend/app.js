@@ -162,6 +162,7 @@ function renderLearning(){
  add('历史记忆：版本 '+(m.revision||0)+'，整理到消息 '+(m.covered_through??-1)+'；原话保留。-1表示尚未整理。');
  const levels={unknown:'尚未观察',needs_help:'仍需帮助',supported:'提示后能做',independent:'本情境可独立做（待复核）',transfer_candidate:'迁移表现待复核'};
  for(const row of task.learning_overview?.profile||[])add(row.title+'：'+(levels[row.level]||row.level)+' · '+row.evidence_count+'条原话证据');
+ for(const item of task.project_knowledge||[])add('项目知识 ['+item.status+'] '+item.title+'：'+item.content+'（证据 '+item.evidence_ids.join(', ')+'；版本 '+item.revision+'）');
  for(const card of task.teaching?.learning?.experiences||[]){
   const p=document.createElement('p');p.textContent='经验：'+card.title+' ['+card.status+']\n'+card.rule+'\n适用：'+card.when+'；验证：'+card.verification+'；限制：'+card.limits;box.append(p);
   for(const [action,label] of card.status==='draft'?[['confirm','我理解并保留'],['reject','不保留']]:card.status==='confirmed'?[['disable','停用']]:card.status==='disabled'?[['confirm','重新启用']]:[]){

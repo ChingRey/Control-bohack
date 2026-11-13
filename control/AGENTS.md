@@ -112,3 +112,11 @@ OpenAI使用store=false；函数调用和reasoning响应项在同轮后续请求
 OPENAI_API_KEY与TEACHING_MODEL可通过环境配置，或页面选择OpenAI；有多个服务商时显式设置TEACHING_PROVIDER。显式官方provider始终使用固定官方URL，不接受前端传入base_url。旧TEACHING_ENDPOINT用于未显式指定provider的兼容测试配置。
 
 53项测试包含Responses格式、工具/推理项续传、摘要、密钥不落库、不串提供商和旧DeepSeek接口兼容。真实OpenAI账户API尚需用户配置后验证；不要将mock通过写成真实模型成功。
+
+## Project knowledge retrieval invariants
+
+- Only Teaching may create knowledge candidates; every candidate must cite exact student-authored evidence. Candidate records remain pending and unverified until a human review action.
+- Coding retrieval is restricted to approved records for the current task. Never search across tasks or students. Search results include source evidence, revision, code hash, and a stale flag; current source files take precedence.
+- The SQLite index mirrors task-owned learning state in the same save transaction. Task JSON remains authoritative. Review state changes must be persisted through the task save path.
+- `reviewer` is not authenticated identity; keep the local prototype bound to loopback. Do not represent this route as secure multi-user review.
+- No Skill installation, automatic learning score, or claim of improved Coding performance is enabled. Quality improvement requires a separate benchmark with real tasks and behavior checks.
