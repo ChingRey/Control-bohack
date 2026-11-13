@@ -41,6 +41,7 @@ $('run').onclick=()=>{confirmMode='step';$('confirm').querySelector('p').textCon
 async function init(){try{const id=localStorage.getItem('control-workbench-task');if(id){try{task=await api('/tasks/'+id)}catch{task=await api('/tasks',{})}}else task=await api('/tasks',{});render();if(['queued','running'].includes(task.teaching_run?.status)||['queued','running'].includes(task.coding_run?.status)){setBusy(true);try{await waitForTeacher()}finally{setBusy(false)}}}catch(e){$('connection').textContent='连接失败';toast(e.message)}}
 
 function renderTeacherStatus(){
+ renderManualKnowledge();
  const real=task.teaching_provider?.mode==='model';renderKnowledge();renderLearning();
  const course=task.teaching?.course;
  $('course-overview').textContent=course?('本教程：'+course.title+'\n当前目标：'+(task.teaching?.plan?.goal||'先了解你的判断')+'\n接着上次：'+(course.resume_note||'从当前项目开始审查')):'本项目持续教学 · 刷新后接着学';
@@ -194,3 +195,45 @@ $('coding-settings').onclick=()=>$('coding-settings-dialog').showModal();
 $('coding-settings-close').onclick=()=>{$('coding-key').value='';$('coding-settings-dialog').close()};
 $('coding-connect').onclick=async()=>{try{await api('/settings/coding',{api_key:$('coding-key').value,model:$('coding-model').value.trim(),region:$('coding-region').value});$('coding-key').value='';$('coding-settings-dialog').close();task=await api('/tasks/'+task.id);render();toast('Coding配置已保存；实际调用尚待验证')}catch(e){toast(e.message)}};
 $('generate-phase-plan').onclick=()=>{const message=$('coding-input').value.trim();if(!message)return toast('先在Coding聊天输入框填写需求');perform(()=>api('/tasks/'+task.id+'/coding/generate-plan',{message}))};
+
+/* Small local experiment panel. User content is rendered as text only. */
+function renderManualKnowledge(){
+ if(!task)return;
+ let panel=document.getElementById('manual-knowledge-panel');
+ const make=(tag,text)=>{const n=document.createElement(tag);if(text)n.textContent=text;return n};
+ if(!panel){
+  panel=make('details');panel.id='manual-knowledge-panel';panel.open=true;
+  panel.style.cssText='margin:10px;padding:10px;border:1px solid #777;max-height:380px;overflow:auto';
+  panel.append(make('summary','项目经验实验（人工录入）'));
+  panel.append(make('p','仅当前项目。保存后点击“允许检索”；按相关性最多加载3条。已加载不代表模型已采用或效果已提升。'));
+  const toggle=make('input');toggle.type='checkbox';toggle.id='manual-knowledge-enabled';
+  const label=make('label');label.append(toggle,document.createTextNode(' 向 Coding 提供已批准知识（下一轮生效）'));panel.append(label);
+  toggle.onchange=()=>perform(()=>api('/tasks/'+task.id+'/knowledge/settings',{enabled:toggle.checked}));
+  const title=make('input');title.id='manual-knowledge-title';title.placeholder='经验标题，例如：文本输入的空白处理';title.maxLength=120;title.style.width='100%';
+  const content=make('textarea');content.id='manual-knowledge-content';content.placeholder='写明适用条件、建议、验证方法和限制。人工经验尚未经过效果验证。';content.maxLength=4000;content.rows=4;content.style.width='100%';
+  const save=make('button','保存人工经验（待审核）');save.type='button';
+  save.onclick=async()=>{const ok=await perform(()=>api('/tasks/'+task.id+'/knowledge/manual',{title:title.value.trim(),content:content.value.trim(),confirmed:true}));if(ok){title.value='';content.value='';toast('经验已保存，点击允许检索后供下一轮使用')}};
+  panel.append(title,content,save);
+  const query=make('input');query.id='manual-knowledge-query';query.placeholder='输入下一轮需求，预览会检索到什么';query.style.width='100%';
+  const search=make('button','预览检索');search.type='button';const results=make('pre');results.id='manual-knowledge-results';results.style.whiteSpace='pre-wrap';
+  search.onclick=async()=>{if(busy)return;try{const data=await api('/tasks/'+task.id+'/knowledge/search',{query:query.value.trim()});results.textContent=data.items.length?data.items.map(x=>x.id+' · '+x.title+'\n'+x.content+(x.stale_for_code?'\n注意：源码已变化，需核对适用性':'')).join('\n\n'):'没有匹配条目。请确认条目已批准，需求与经验相关。'}catch(e){toast(e.message)}};
+  panel.append(query,search,results);
+  const status=make('p');status.id='manual-knowledge-status';const list=make('div');list.id='manual-knowledge-list';panel.append(status,list);
+  document.getElementById('tutorial-arrangement').before(panel);
+ }
+ if(panel.dataset.task!==task.id){$('manual-knowledge-title').value='';$('manual-knowledge-content').value='';$('manual-knowledge-results').textContent='';$('manual-knowledge-query').value='';panel.dataset.task=task.id}
+ $('manual-knowledge-enabled').checked=task.knowledge_enabled!==false;
+ const items=task.project_knowledge||[];const loads=task.coding_workflow?.loads||[];const last=[...loads].reverse().find(x=>x.submitted);
+ const ids=last?.knowledge_versions||[];
+ $('manual-knowledge-status').textContent='本项目已保存 '+items.length+' 条；可检索 '+items.filter(x=>x.status==='approved').length+' 条。'+(last?'最近成功 Coding 调用加载：'+(ids.map(x=>x.id+' v'+x.revision).join('、')||'0条'):'还没有成功的 Coding 调用记录。');
+ const list=$('manual-knowledge-list');list.replaceChildren();
+ if(!items.length)list.append(make('p','暂无经验，请在上方录入。无需配置 Teaching API。'));
+ for(const item of items){
+  const card=make('div');card.style.cssText='border-top:1px solid #777;padding:8px 0;white-space:pre-wrap';
+  const names={pending_review:'已保存，待审核',approved:'已允许检索',rejected:'已拒绝',withdrawn:'已停用'};
+  card.append(make('p',item.title+' · '+(names[item.status]||item.status)+'\n'+item.content+'\n'+item.id+' v'+item.revision+' · '+(item.source_turn===-1?'人工录入，未验证效果':'Teaching候选')));
+  const actions=item.status==='pending_review'?[['approve','允许检索'],['reject','拒绝']]:item.status==='approved'?[['withdraw','停用']]:item.status==='withdrawn'&&item.source_turn===-1?[['approve','重新允许检索']]:[];
+  for(const [decision,text] of actions){const b=make('button',text);b.type='button';b.onclick=()=>perform(()=>api('/tasks/'+task.id+'/knowledge/'+item.id+'/review',{confirmed:true,decision,reviewer:'local-manual-review',note:'本机实验面板操作；效果未验证'}));card.append(b)}
+  list.append(card);
+ }
+}

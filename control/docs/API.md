@@ -116,3 +116,8 @@ Coding接口暂为step(task, instruction, learning_context=None)。后端从学�
 POST /api/settings/teaching接收：provider（deepseek/openai，省略仍为deepseek）、api_key、model。OpenAI必须显式填写模型ID；DeepSeek省略model默认deepseek-flash。返回configured与不含密钥的provider元信息（mode、provider、model、protocol）。configured只表示保存完成，不证明账户权限和模型可用。
 
 OpenAI映射到固定Responses端点，DeepSeek映射到固定Chat Completions端点；不接受任意base_url。切换时必须填写对应服务商的密钥，页面切换选项会清空密钥输入；不会回显任何已保存密钥。
+
+
+## Manual knowledge experiment panel
+
+POST `/api/tasks/:id/knowledge/manual` accepts `title`, `content`, `confirmed:true` and creates a pending manual record with saved original evidence. POST `/api/tasks/:id/knowledge/settings` accepts `enabled:boolean` to control knowledge injection into future Coding calls and preflight. Search preview is available even when injection is disabled. See [manual experiment instructions](MANUAL_KNOWLEDGE_EXPERIMENT.md).

@@ -32,6 +32,37 @@ class KnowledgeApiTests(unittest.TestCase):
   else:handler.do_POST()
   return result
 
+ def test_manual_experience_persists_requires_review_and_respects_toggle(self):
+  path=self.path+'/knowledge'
+  self.assertEqual(self.call(path+'/manual',{'title':'Whitespace','content':'Trim whitespace'})[0],400)
+  status,snapshot=self.call(path+'/manual',{'title':'Whitespace','content':'Trim whitespace before validating input','confirmed':True})
+  self.assertEqual(status,200)
+  item=snapshot['project_knowledge'][0];kid=item['id']
+  self.assertEqual(item['source_turn'],-1)
+  self.assertEqual(self.call(path+'/search',{'query':'whitespace'})[1]['items'],[])
+  self.assertEqual(self.call(path+'/'+kid+'/review',{'confirmed':True,'decision':'approve','reviewer':'local'})[0],200)
+  self.assertEqual(len(self.call(path+'/search',{'query':'whitespace'})[1]['items']),1)
+  other=self.call('/api/tasks',{})[1]
+  self.assertEqual(self.call('/api/tasks/'+other['id']+'/knowledge/search',{'query':'whitespace'})[1]['items'],[])
+  task=b.load(self.task['id']);task['mode']='opencode';b.save(task)
+  captured=[]
+  def execute(files,payload,*args):
+   captured.append(copy.deepcopy(payload))
+   return {'text':'Review the whitespace behavior.','files':files,'events':[]}
+  import time
+  with patch.object(b.opencode_executor,'CONFIG',{'key':'test','model':'test','url':'https://example.invalid'}),patch.object(b.opencode_executor,'binary',return_value='opencode'),patch.object(b.opencode_executor,'execute',side_effect=execute):
+   for enabled in (True,False):
+    self.assertEqual(self.call(path+'/settings',{'enabled':enabled})[0],200)
+    self.assertEqual(self.call(self.path+'/coding/messages',{'message':'Review whitespace input'})[0],202)
+    deadline=time.time()+5
+    while time.time()<deadline and b.load(self.task['id'])['coding_run']['status']=='running':time.sleep(.01)
+    self.assertEqual(b.load(self.task['id'])['coding_run']['status'],'completed')
+   self.assertEqual(captured[0]['project_knowledge'][0]['id'],kid)
+   self.assertEqual(captured[1]['project_knowledge'],[])
+  self.call(path+'/'+kid+'/review',{'confirmed':True,'decision':'withdraw','reviewer':'local'})
+  self.assertEqual(self.call(path+'/search',{'query':'whitespace'})[1]['items'],[])
+  self.assertEqual(self.call(path+'/'+kid+'/review',{'confirmed':True,'decision':'approve','reviewer':'local'})[0],200)
+
  def add_candidate(self):
   task=b.load(self.task['id']);task['files']=b.read_project_files(task['id'])
   b.message(task,'teaching','user','输入检查应该先于列表生成，避免留下空白事项。')

@@ -115,7 +115,7 @@ OPENAI_API_KEY与TEACHING_MODEL可通过环境配置，或页面选择OpenAI；�
 
 ## Project knowledge retrieval invariants
 
-- Only Teaching may create knowledge candidates; every candidate must cite exact student-authored evidence. Candidate records remain pending and unverified until a human review action.
+- Teaching-generated candidates must cite exact student-authored evidence. Explicit human-authored experimental entries may also be created via knowledge/manual: preserve their original input as evidence, mark source_turn=-1 and origin=manual_experiment, and keep verified=false. Human entries still require review before retrieval. Candidate records remain pending and unverified until a human review action.
 - Coding retrieval is restricted to approved records for the current task. Never search across tasks or students. Search results include source evidence, revision, code hash, and a stale flag; current source files take precedence.
 - The SQLite index mirrors task-owned learning state in the same save transaction. Task JSON remains authoritative. Review state changes must be persisted through the task save path.
 - `reviewer` is not authenticated identity; keep the local prototype bound to loopback. Do not represent this route as secure multi-user review.

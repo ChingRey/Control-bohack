@@ -162,7 +162,7 @@ def start_coding(t, instruction, planning=False, chatting=False):
  work=json.loads(json.dumps(t));original=read_project_files(t['id']);signature=task_signature(t)
  code_version=knowledge.code_hash(original)
  search_text=' '.join([instruction,*t.get('plan',[])[t.get('step',0):t.get('step',0)+1]])
- with connection() as c:knowledge_context=knowledge.search(c,t['id'],search_text,code_version)
+ with connection() as c:knowledge_context=knowledge.search(c,t['id'],search_text,code_version) if t.get('knowledge_enabled',True) else []
  packet=coding_workflow.prepare(work,instruction,learning.coding_packet(work,instruction),knowledge_context)
  if chatting:
   packet={'student_message':instruction,'learning_context':packet['learning_context'],'project_knowledge':packet['project_knowledge']}
@@ -321,7 +321,7 @@ class Handler(BaseHTTPRequestHandler):
      elif action=='coding/preflight':
       if t.get('mode')!='opencode' or not t['plan'] or t['step']>=len(t['plan']):raise ValueError('请先确认阶段计划')
       current_hash=knowledge.code_hash(read_project_files(t['id']))
-      with connection() as c:knowledge_context=knowledge.search(c,t['id'],t['plan'][t['step']],current_hash)
+      with connection() as c:knowledge_context=knowledge.search(c,t['id'],t['plan'][t['step']],current_hash) if t.get('knowledge_enabled',True) else []
       packet=coding_workflow.prepare(t,t['plan'][t['step']],learning.coding_packet(t,t['plan'][t['step']]),knowledge_context)
       coding_workflow.inspect_phase(t,packet)
      elif action=='plan':
@@ -374,6 +374,11 @@ class Handler(BaseHTTPRequestHandler):
        'suggestion':s['turns'][-1]['result']['upgrade_suggestion'],
        'code_hash':s['turns'][-1]['code_hash'],'applied':False}
       s['upgrade_requests'].append(proposal)
+     elif action=='knowledge/manual':
+      knowledge.add_manual(t,body.get('title'),body.get('content'),knowledge.code_hash(read_project_files(t['id'])),body.get('confirmed'))
+     elif action=='knowledge/settings':
+      if type(body.get('enabled')) is not bool:raise ValueError('enabled must be boolean')
+      t['knowledge_enabled']=body['enabled']
      elif action=='knowledge/search':
       query=body.get('query','')
       current_hash=knowledge.code_hash(read_project_files(t['id']))

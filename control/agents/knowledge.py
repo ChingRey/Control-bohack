@@ -111,6 +111,30 @@ def search(conn, task_id, query, current_code_hash, limit=3):
     return sorted(found,key=lambda x:(x['relevance'],x['source_turn']),reverse=True)[:limit]
 
 
+def add_manual(task, title, content, current_code_hash, confirmed):
+    """Record an explicit human-authored experimental rule, without claiming verification."""
+    if confirmed is not True:raise ValueError('Explicit confirmation is required')
+    for value, limit in ((title,120),(content,4000)):
+        if not isinstance(value,str) or not value.strip() or len(value)>limit:
+            raise ValueError('Title (1-120) and content (1-4000) are required')
+    from datetime import datetime, timezone
+    import uuid
+    from . import learning
+    s=learning.state(task)
+    evidence_id=len(task.setdefault('messages',[]))
+    task['messages'].append({'channel':'teaching','role':'user',
+        'content':'[Manual project knowledge] '+title.strip()+'\n'+content.strip()})
+    row={'id':'manual-'+uuid.uuid4().hex,'type':'project_fact','title':title.strip(),
+         'content':content.strip(),'evidence_ids':[evidence_id],
+         'quotes':[{'message_id':evidence_id,'quote':content.strip()}],
+         'source_turn':-1,'code_hash':current_code_hash,'status':'pending_review',
+         'revision':1,'created_at':datetime.now(timezone.utc).isoformat(),
+         'origin':'manual_experiment','verified':False}
+    s.setdefault('knowledge_candidates',[]).append(row)
+    s['revision']+=1
+    return row
+
+
 def review(task, candidate_id, decision, reviewer, note=''):
     if decision not in ('approve','reject','withdraw'):
         raise ValueError('decision must be approve, reject, or withdraw')
@@ -125,7 +149,8 @@ def review(task, candidate_id, decision, reviewer, note=''):
         if row['status']!='approved':raise ValueError('Only approved knowledge can be withdrawn')
         target='withdrawn'
     else:
-        if row['status']!='pending_review':raise ValueError('Only pending knowledge can be reviewed')
+        if row['status']!='pending_review' and not (row.get('origin')=='manual_experiment' and row['status']=='withdrawn' and decision=='approve'):
+            raise ValueError('Only pending knowledge or withdrawn manual knowledge can be approved')
         target={'approve':'approved','reject':'rejected'}[decision]
     from datetime import datetime, timezone
     before=row['status'];row.update(status=target,revision=row['revision']+1,
