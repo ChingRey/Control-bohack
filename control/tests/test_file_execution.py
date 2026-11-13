@@ -38,6 +38,25 @@ class ProjectFileExecutionTests(unittest.TestCase):
         self.assertEqual(task['coding_workflow']['plan_source'],'student_direct_file_instruction')
         self.assertIn('src/main.js',b.read_project_files(task['id']))
 
+    def test_product_requirements_send_without_a_confirmed_plan(self):
+        requirements=('我想开发一个购物网站，包含论坛、直播和同城配送，后期发展成APP',
+                      '你自己选择最合适的方案执行', '继续未完成的任务')
+        for draft in ([], ['商品列表', '购物车']):
+            for requirement in requirements:
+                with self.subTest(draft=draft, requirement=requirement):
+                    task=b.load(self.h.task['id']);task['plan']=[];task['plan_draft']=draft;b.save(task)
+                    def discuss(files, packet, planning=False, chatting=False):
+                        authorized=requirement!='我想开发一个购物网站，包含论坛、直播和同城配送，后期发展成APP'
+                        self.assertEqual(planning,not authorized);self.assertEqual(chatting,not authorized)
+                        if not authorized:self.assertEqual(packet['student_message'],requirement)
+                        return {'text':'我们先讨论这个需求和实施方案。','files':files,'events':[]}
+                    with patch.object(executor,'execute',side_effect=discuss) as execute:
+                        self.assertEqual(self.h.call(self.h.path+'/coding/messages',{'message':requirement})[0],202)
+                        restored=self.h.wait()
+                    execute.assert_called_once()
+                    self.assertEqual(bool(restored['plan']),requirement!='我想开发一个购物网站，包含论坛、直播和同城配送，后期发展成APP')
+                    self.assertEqual(sum(m['role']=='user' and m['content']==requirement for m in restored['messages']), 1 if not draft else 2)
+
     def test_explicit_discussion_stays_read_only(self):
         for instruction in ('先讨论如何创建 src/main.js，不要写代码','修改开发计划','如何创建JS文件？','请给出开发计划'):
             self.assertEqual(coding_workflow.message_intent(instruction),'discuss')
@@ -60,9 +79,9 @@ class ProjectFileExecutionTests(unittest.TestCase):
         self.assertEqual(b.read_project_files(task['id']),before)
 
     def test_project_config_types_allowed_and_external_paths_stay_blocked(self):
-        for name in ('src/main.js','src/main.mjs','src/types.d.ts','db/schema.sql','.gitignore','package.json','Dockerfile','.env.example'):
+        for name in ('src/main.js','src/main.mjs','src/types.d.ts','db/schema.sql','.gitignore','package.json','Dockerfile','.env.example','.env','node_modules/pkg/main.js','.git/config','.settings/custom.xyz'):
             self.assertTrue(project_files.allowed(name),name)
-        for name in ('../outside.js','C:/outside.js','node_modules/pkg/main.js','.git/config','.env'):
+        for name in ('../outside.js','C:/outside.js','C:outside.js','/outside.js'):
             self.assertFalse(project_files.allowed(name),name)
 
 

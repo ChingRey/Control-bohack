@@ -135,9 +135,9 @@ class BackendTest(unittest.TestCase):
  def test_file_failures_return_json_instead_of_disconnecting(self):
   t=self.call('/tasks',{});path='/tasks/'+t['id']
   b.project(t['id']).joinpath('app.js').write_bytes(b'\xff\xfe')
-  with self.assertRaises(HTTPError) as caught:self.call(path)
-  self.assertEqual(caught.exception.code,422);self.assertIn('UTF-8',json.load(caught.exception)['error'])
-  with patch.object(Path,'read_text',side_effect=PermissionError('test')):
+  snapshot=self.call(path)
+  self.assertNotIn('app.js',snapshot['files']);self.assertEqual(snapshot['binary_files']['app.js']['size'],2)
+  with patch.object(Path,'read_bytes',side_effect=PermissionError('test')):
    with self.assertRaises(HTTPError) as caught:self.call(path)
   self.assertEqual(caught.exception.code,500);self.assertIn('error',json.load(caught.exception))
 

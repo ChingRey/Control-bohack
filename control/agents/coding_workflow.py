@@ -89,6 +89,10 @@ def message_intent(text):
     edit=bool(re.search(r'开始|执行|实现|开发|修改|修复|写代码|继续|创建|新建|写入|编写|添加|删除|重命名|移动|安装|构建|运行|测试|create|write|implement|fix|build|install|rename|delete',text,re.I))
     return 'execute' if edit and not (readonly or plan) else 'discuss'
 
+def development_authorized(text):
+    import re
+    return message_intent(text)=='execute' and bool(re.search(r'创建|新建|写入|编写|修改|修复|删除|重命名|开始|执行|动手|继续|create|write|implement|fix',text,re.I))
+
 def direct_file_request(text):
     import re
     return bool(re.search(r'^(?:(?:请|帮我|麻烦|直接|现在|立即|给我|请你|按计划|按照计划)\s*)*(?:创建|新建|写入|编写|修改|删除|重命名).{0,120}(?:[.](?:[cm]?js|tsx?|jsx|py|html|css|sql|json)|(?:JS|JavaScript|脚本)文件)',text,re.I))

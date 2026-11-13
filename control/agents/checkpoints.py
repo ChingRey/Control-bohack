@@ -3,16 +3,19 @@ import copy
 import difflib
 import time
 import re
-from . import code_refs, knowledge, memory
+from . import code_refs, knowledge, memory, project_files
 
 DIFF_CHARS = 12000
 SOURCE_CHARS = 16000
 
 
-def record(task, checkpoint_id, instruction, agent_output, before, after, stage_index, kind='development', tool_events=None):
+def record(task, checkpoint_id, instruction, agent_output, before, after, stage_index, kind='development', tool_events=None, before_assets=None, after_assets=None):
     events = task.setdefault('coding_checkpoints', [])
     if any(e['checkpoint_id'] == checkpoint_id for e in events):
         return next(e for e in events if e['checkpoint_id'] == checkpoint_id)
+    before_assets=before_assets or {};after_assets=after_assets or {}
+    old_assets=project_files.asset_metadata(before_assets);new_assets=project_files.asset_metadata(after_assets)
+    binary_changes=[{'file':n,'before':old_assets.get(n),'after':new_assets.get(n)} for n in sorted(set(old_assets)|set(new_assets)) if old_assets.get(n)!=new_assets.get(n)]
     changes = []
     remaining = DIFF_CHARS
     for name in sorted(set(before) | set(after)):
@@ -43,7 +46,7 @@ def record(task, checkpoint_id, instruction, agent_output, before, after, stage_
              'stage_index': stage_index, 'kind': kind, 'task_description': instruction,
              'user_requirement': requirement, 'agent_output': agent_output, 'created_at': time.time(),
              'project_evidence': {'base_code_hash': knowledge.code_hash(before), 'code_hash': knowledge.code_hash(after),
-                                  'changes': changes,
+                                  'changes': changes,'binary_changes':binary_changes,'asset_hash':project_files.asset_hash(after_assets),
                                   'runtime_observations': copy.deepcopy(task.get('runtime_observations', [])[-20:]),
                                   'runtime_notice': 'Browser reports are unverified and not bound to this checkpoint code version.',
                                   'execution_records':executions[-10:], 'test_records':tests[-10:],
@@ -73,6 +76,9 @@ def view(task, files):
         event[key + '_truncated'] = len(value) > 4000
     evidence = event['project_evidence']
     evidence['stale_for_code'] = evidence['code_hash'] != knowledge.code_hash(files)
+    binary_changes=evidence.get('binary_changes',[])
+    evidence['binary_change_count']=len(binary_changes);evidence['binary_changes']=binary_changes[:40]
+    evidence['stale_for_assets']=evidence.get('asset_hash',project_files.asset_hash({}))!=project_files.metadata_hash(task.get('binary_files',{}))
     changes = evidence['changes']
     evidence['change_count'] = len(changes)
     evidence['changes'] = changes[:40]

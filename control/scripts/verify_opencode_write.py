@@ -15,6 +15,9 @@ from agents import opencode_executor as executor
 
 
 def main():
+    import argparse,base64
+    parser=argparse.ArgumentParser();parser.add_argument('--path',default='src/main.js');args=parser.parse_args()
+    target_name=args.path
     requests = []
     class Provider(BaseHTTPRequestHandler):
         def log_message(self, *args):pass
@@ -29,7 +32,7 @@ def main():
                     self.send_response(400);self.end_headers();self.wfile.write(b'write tool unavailable');return
                 properties = write.get('parameters', {}).get('properties', {})
                 path_key = 'filePath' if 'filePath' in properties else 'path'
-                args = {path_key: 'src/main.js',
+                args = {path_key: target_name,
                         'content': 'console.log("project write smoke");\n'}
                 delta = {'role':'assistant','tool_calls':[{'index':0,'id':'write-js','type':'function',
                           'function':{'name':'write','arguments':json.dumps(args)}}]}
@@ -62,10 +65,12 @@ def main():
             executor.ROOT=Path(folder);executor.binary=lambda:exe
             executor.CONFIG={'key':'local-smoke-token','model':'smoke','url':'http://127.0.0.1:'+str(server.server_port)+'/v1'}
             os.environ['CONTROL_CODING_TIMEOUT_SECONDS']='60'
-            result=executor.execute({}, {'instruction':'创建 src/main.js 并写入一条 console.log，然后停止。'})
-            assert result['files'].get('src/main.js')=='console.log("project write smoke");\n', 'CLI did not return the created JS file'
+            assets={'assets/preserved.binary':base64.b64encode(b'\x00\xffexisting asset').decode()}
+            result=executor.execute({}, {'instruction':'创建 '+target_name+' 并写入一条 console.log，然后停止。'},binary_files=assets)
+            assert result['binary_files']==assets,'Binary asset was not preserved'
+            assert result['files'].get(target_name)=='console.log("project write smoke");\n', 'CLI did not return the created JS file'
             assert any(e.get('part',{}).get('tool')=='write' and e['part'].get('state',{}).get('status')=='completed' for e in result['events']), 'No completed write tool event'
-            print(json.dumps({'status':'passed','file':'src/main.js','provider':'local_synthetic',
+            print(json.dumps({'status':'passed','file':target_name,'binary_preserved':True,'provider':'local_synthetic',
                               'model_requests':len(requests),'real_model_called':False},ensure_ascii=False))
     finally:
         executor.CONFIG=original_config;executor.ROOT=original_root;executor.binary=original_binary

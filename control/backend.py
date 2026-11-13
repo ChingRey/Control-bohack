@@ -74,7 +74,8 @@ def project(tid):
  p = DATA / tid / 'project'; p.mkdir(parents=True, exist_ok=True); return p
 
 def snapshot(t):
- t['files'] = read_project_files(t['id'])
+ t['files'],assets = project_files.scan(project(t['id']))
+ t['binary_files']=project_files.asset_metadata(assets)
  t['file_hashes']={name:code_refs.digest(source) for name,source in t['files'].items()}
  if t.get('mode')=='opencode':
   coding_workflow.state(t)
@@ -99,7 +100,10 @@ def read_project_files(tid):
 
 def write_project_file(path,content):
  # Encode before opening anything, then replace atomically: failed writes keep the old file.
- raw=content.encode('utf-8');temporary=None
+ write_project_bytes(path,content.encode('utf-8'))
+
+def write_project_bytes(path,raw):
+ temporary=None
  path.parent.mkdir(parents=True,exist_ok=True)
  try:
   with tempfile.NamedTemporaryFile(dir=path.parent,delete=False) as stream:
@@ -108,27 +112,33 @@ def write_project_file(path,content):
  finally:
   if temporary is not None and temporary.exists():temporary.unlink()
 
-def apply_coding_files(task, before, after, instruction):
+def apply_coding_files(task, before, after, instruction, before_assets=None, after_assets=None):
+ before_assets=before_assets or {};after_assets=after_assets or {}
+ old_bytes={**{n:v.encode('utf-8') for n,v in before.items()},**{n:project_files.decode(v) for n,v in before_assets.items()}}
+ new_bytes={**{n:v.encode('utf-8') for n,v in after.items()},**{n:project_files.decode(v) for n,v in after_assets.items()}}
  touched=[];changes=[]
  try:
-  for name in sorted(set(before)|set(after)):
-   if before.get(name)==after.get(name):continue
+  for name in sorted(set(old_bytes)|set(new_bytes)):
+   if old_bytes.get(name)==new_bytes.get(name):continue
    path=project_files.target(project(task['id']),name)
    touched.append(name)
    if name in after:write_project_file(path,after[name])
+   elif name in new_bytes:write_project_bytes(path,new_bytes[name])
    else:path.unlink()
-   changes.append(dict(file=name,before=before.get(name,''),after=after.get(name,''),deleted=name not in after,instruction=instruction))
+   changes.append(dict(file=name,before=before.get(name,''),after=after.get(name,''),binary=name in before_assets or name in after_assets,deleted=name not in new_bytes,instruction=instruction))
  except Exception:
   rollback_failed=False
   for name in reversed(touched):
    try:
     path=project_files.target(project(task['id']),name)
     if name in before:write_project_file(path,before[name])
+    elif name in old_bytes:write_project_bytes(path,old_bytes[name])
     elif path.exists():path.unlink()
    except OSError:rollback_failed=True
   if rollback_failed:raise ValueError('部分文件恢复失败，请核对项目文件') from None
   raise
  task['changes'].extend(changes)
+ task['binary_files']=project_files.asset_metadata(after_assets)
 
 def start_teaching(t, action='message'):
  if t.get('teaching_run',{}).get('status') in ('queued','running'): raise ValueError('教师正在处理上一条消息')
@@ -141,7 +151,7 @@ def start_teaching(t, action='message'):
  t['teaching_run']=job;save(t)
  baseline=task_signature(t);work=json.loads(json.dumps(t));base_count=len(t['messages'])
  def worker():
-  source_files=None
+  source_files=None;source_assets=None
   def progress(stage,detail):
    with task_lock(work['id']):
     fresh=load(work['id'])
@@ -150,7 +160,7 @@ def start_teaching(t, action='message'):
     save(fresh)
   try:
    progress('reading','正在读取当前代码与学习记录')
-   snapshot(work);source_files=work['files'].copy()
+   snapshot(work);source_files=work['files'].copy();source_assets=work['binary_files'].copy()
    reply=teaching.run(work,action,progress)
    message(work,'teaching','assistant',reply)
    result={'status':'completed','detail':'回复已完成'}
@@ -162,7 +172,7 @@ def start_teaching(t, action='message'):
    fresh=load(work['id'])
    if fresh.get('teaching_run',{}).get('id')!=job['id']: return
    stale=task_signature(fresh)!=baseline
-   try: stale=stale or (source_files is not None and read_project_files(work['id'])!=source_files)
+   try: stale=stale or (source_files is not None and (read_project_files(work['id'])!=source_files or project_files.asset_metadata(project_files.read_assets(project(work['id'])))!=source_assets))
    except (OSError,UnicodeError): stale=True
    if stale:
     result={'status':'failed','detail':'项目或学习记录已变化，本次分析已过期，请重新审查','error':'stale_context'}
@@ -208,9 +218,10 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
   job['skill_results']=checkpoint_operation['skill_results']
   checkpoint_operation.update(status='running',coding_run_id=job['id'])
  t['coding_run']=job;save(t)
- work=json.loads(json.dumps(t));original=read_project_files(t['id']);signature=task_signature(t)
+ work=json.loads(json.dumps(t));original,original_assets=project_files.scan(project(t['id']));signature=task_signature(t)
  with connection() as c:knowledge_context=knowledge.search(c,t['id'],instruction,knowledge.code_hash(original)) if t.get('knowledge_enabled',True) else []
  packet=coding_workflow.prepare(work,instruction,learning.coding_packet(work,instruction),knowledge_context)
+ packet['project_requirements']=[{'message_id':i,'content':m['content'][:2000]} for i,m in enumerate(work['messages']) if m['channel']=='coding' and m['role']=='user'][-5:]
  if not chatting:
   packet.pop('plan',None)
   packet['authorized_phase']=t['plan'][t['step']] if t.get('plan') and t['step']<len(t['plan']) else instruction
@@ -222,21 +233,22 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
  def worker():
   try:
    if not chatting:packet['recent_dialogue']=[]
-   result=opencode_executor.execute(original,packet,planning or chatting,chatting)
+   result=opencode_executor.execute(original,packet,planning or chatting,chatting,original_assets) if original_assets else opencode_executor.execute(original,packet,planning or chatting,chatting)
+   after_assets=result.get('binary_files',original_assets)
    with task_lock(t['id']):
     fresh=load(t['id'])
     if fresh.get('coding_run',{}).get('id')!=job['id']:return
-    if task_signature(fresh)!=signature or read_project_files(t['id'])!=original:raise ValueError('项目已变化，拒绝采用过期结果')
+    if task_signature(fresh)!=signature or project_files.scan(project(t['id']))!=(original,original_assets):raise ValueError('项目已变化，拒绝采用过期结果')
     if chatting:
      if fresh.get('plan') and any(result['files'].get(n)!=original.get(n) for n in result['files']):
       coding_workflow.state(fresh)['checkpoints'][fresh['step']]['status']='executed_pending_review'
      coding_workflow.sync_plan(fresh,result['text'],result['events'])
-     apply_coding_files(fresh,original,result['files'],instruction)
+     apply_coding_files(fresh,original,result['files'],instruction,original_assets,after_assets)
     elif planning:
      if not coding_workflow.sync_plan(fresh,result['text'],result['events']):
       if not fresh.get('plan_draft'):raise ValueError('尚未形成可同步的计划，请继续讨论阶段和验收点')
     else:
-     apply_coding_files(fresh,original,result['files'],instruction)
+     apply_coding_files(fresh,original,result['files'],instruction,original_assets,after_assets)
      coding_workflow.state(fresh)['checkpoints'][fresh['step']]['status']='executed_pending_review'
      fresh['stage']='review'
     w=coding_workflow.state(fresh);w['status']='paused';w['tool_events']=result['events']
@@ -244,7 +256,7 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
     coding_workflow.event(fresh,'turn_finished','OpenCode轮次结束；等待学生审查与确认，未验证行为正确性')
     message(fresh,'coding','assistant',result['text']);fresh['messages'][-1]['code_refs']=code_refs.collect(result['text'],result['files']);fresh['coding_run'].update(status='completed',detail='已暂停，等待审查')
     if not chatting:
-     checkpoint=checkpoint_events.record(fresh,job['id'],instruction,result['text'],original,result['files'],work['step'],'planning' if planning else 'development',result.get('events',[]))
+     checkpoint=checkpoint_events.record(fresh,job['id'],instruction,result['text'],original,result['files'],work['step'],'planning' if planning else 'development',result.get('events',[]),original_assets,after_assets)
      if checkpoint_operation is not None:
       checkpoint['previous_checkpoint_id']=work['coding_checkpoints'][-1]['checkpoint_id']
       if checkpoint_operation['action']=='revise':checkpoint['root_checkpoint_id']=checkpoint_operation['root_checkpoint_id']
@@ -261,7 +273,7 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
  threading.Thread(target=worker,daemon=True).start()
 
 def checkpoint_command(t, checkpoint_id, action, body):
- operation,launch=checkpoint_control.prepare(t,checkpoint_id,action,body,read_project_files(t['id']))
+ operation,launch=checkpoint_control.prepare(t,checkpoint_id,action,body,read_project_files(t['id']),project_files.read_assets(project(t['id'])))
  if not launch:return 200,{'operation':operation,'task':snapshot(t)}
  if operation['target_step']>=len(t['plan']):
   operation['status']='completed';operation['outcome']='development_finished';save(t)
@@ -286,7 +298,7 @@ PREVIEW_PORT=None
 
 def safe_preview_name(name):
  import re
- return project_files.allowed(name) and Path(name).suffix.lower() in ('.html','.js','.mjs','.css','.svg','.json')
+ return project_files.allowed(name)
 
 class PreviewHandler(BaseHTTPRequestHandler):
  def do_GET(self):
@@ -446,16 +458,16 @@ class Handler(BaseHTTPRequestHandler):
        if command=='返工当前阶段':
         if not t['plan'] or t['step']>=len(t['plan']):raise ValueError('没有当前阶段')
         start_coding(t,t['plan'][t['step']]+'；根据最近学生反馈返工，仅此阶段');return self.reply(202,snapshot(t))
-       if command in ('开始','开始开发','执行当前阶段','继续','继续下一阶段'):
+       if command in ('开始','开始开发','执行当前阶段','继续','继续下一阶段') and t.get('plan'):
         if not t['plan'] or t['step']>=len(t['plan']):raise ValueError('请先确认计划，或所有阶段已通过')
         checkpoints=coding_workflow.state(t)['checkpoints']
         if checkpoints[t['step']]['status']=='executed_pending_review':raise ValueError('当前阶段待检查，请先反馈问题或确认检查通过')
         start_coding(t,t['plan'][t['step']]);return self.reply(202,snapshot(t))
        import re
        wants_edit=coding_workflow.message_intent(command)=='execute'
-       if wants_edit and not t.get('plan') and coding_workflow.direct_file_request(command):
+       if wants_edit and not t.get('plan') and coding_workflow.development_authorized(command):
         t['plan']=[text[:300]];t['plan_draft']=list(t['plan']);coding_workflow.confirm(t)
-        coding_workflow.state(t)['plan_source']='student_direct_file_instruction'
+        coding_workflow.state(t)['plan_source']='student_direct_file_instruction' if coding_workflow.direct_file_request(command) else 'student_development_authorization'
        if wants_edit and t.get('plan'):
         if t['step']>=len(t['plan']):raise ValueError('已确认计划全部完成，如需新任务请先制定新计划')
         if coding_workflow.state(t)['checkpoints'][t['step']]['status']=='executed_pending_review' and t.get('coding_checkpoints'):
@@ -463,8 +475,6 @@ class Handler(BaseHTTPRequestHandler):
          code,result=checkpoint_command(t,checkpoint['checkpoint_id'],'revise',{'session_id':t['id'],'request_id':str(uuid.uuid4()),'confirmed':True,'instruction':text,'expected_code_hash':knowledge.code_hash(read_project_files(t['id']))})
          return self.reply(code,result['task'])
         start_coding(t,t['plan'][t['step']]+'\n学生补充：'+text);return self.reply(202,snapshot(t))
-       if wants_edit and not t.get('plan'):
-        save(t);raise ValueError('已识别为执行请求，请先确认项目开发计划；也可直接要求创建具体代码文件')
        start_coding(t,text,chatting=True);return self.reply(202,snapshot(t))
       if ch=='teaching':
        start_teaching(t);return self.reply(202,snapshot(t))

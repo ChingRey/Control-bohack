@@ -3,7 +3,7 @@ import copy
 import hashlib
 import json
 import re
-from . import coding_workflow, knowledge, learning
+from . import coding_workflow, knowledge, learning, project_files
 
 
 def find(task, checkpoint_id):
@@ -47,7 +47,7 @@ def skill_results(unlocks):
     return results
 
 
-def prepare(task, checkpoint_id, action, body, files):
+def prepare(task, checkpoint_id, action, body, files, binary_files=None):
     """Mutate only a locked task copy. Caller persists before launching Coding.
 
     Returns (operation, launch). Exact duplicates return the original receipt.
@@ -88,6 +88,9 @@ def prepare(task, checkpoint_id, action, body, files):
     if any(task.get(k, {}).get('status') in ('queued', 'running') for k in ('coding_run', 'teaching_run')):
         raise ValueError('当前会话正在执行，不能同时修改或恢复')
     code_hash = knowledge.code_hash(files)
+    asset_hash=project_files.asset_hash(binary_files or {})
+    if previous and previous.get('expected_asset_hash',project_files.asset_hash({}))!=asset_hash:
+        raise ValueError('二进制资源版本已变化，不能重试旧请求')
     if body.get('expected_code_hash') != code_hash:
         raise ValueError('源码版本不一致，请读取最新检查点后重试')
     if previous:
@@ -100,6 +103,7 @@ def prepare(task, checkpoint_id, action, body, files):
     latest = task['coding_checkpoints'][-1]
     if root(task, latest)['checkpoint_id'] != parent['checkpoint_id'] or latest['kind'] != 'development':
         raise ValueError('仅当前开发检查点可接受修改或恢复，计划草稿仍需确认')
+    if latest['project_evidence'].get('asset_hash',project_files.asset_hash({}))!=asset_hash:raise ValueError('检查点二进制资源版本已过期')
     if latest['project_evidence']['code_hash'] != code_hash or task['step'] != parent['stage_index']:
         raise ValueError('检查点或开发阶段已过期，请重新检查当前项目')
     if action == 'resume':
@@ -109,7 +113,7 @@ def prepare(task, checkpoint_id, action, body, files):
                  'checkpoint_id': checkpoint_id, 'root_checkpoint_id': parent['checkpoint_id'],
                  'instruction': instruction, 'expected_code_hash': code_hash, 'target_step': task['step'],
                  'status': 'queued', 'attempt': 1, 'skill_results': acknowledgements,
-                 'base_checkpoint_id': latest['checkpoint_id'],
+                 'base_checkpoint_id': latest['checkpoint_id'],'expected_asset_hash':asset_hash,
                  'student_confirmed': True, 'teaching_completed': body.get('teaching_completed') is True}
     operations.append(operation)
     return operation, True

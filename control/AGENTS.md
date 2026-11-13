@@ -119,3 +119,5 @@ OPENAI_API_KEY与TEACHING_MODEL可通过环境配置，或页面选择OpenAI；�
 manual delivery可完全不调用Teaching Agent。Skill通知为教学端报告；实际启用和使用回执目前必须为false，不接受客户端传enabled/installed。Teaching失败不得改写已完成Coding状态。事件、操作、学生原话保存在任务JSON，启动恢复要同步标记操作失败，不能自动重放。
 
 明确项目文件命令支持直接执行和后续返工；普通讨论仍只读。OpenCode配置只显式允许项目文件工具，Shell和外部网络仍被拒绝；不得把本次文件修复描述为已开放全部执行权限。文件写入失败尝试回滚，本地data不清理。verify_opencode_write.py使用真实CLI及本机模拟服务，不是实际模型质量验收。
+
+通用项目文件接续：已移除扩展名/文件名白名单，任意项目内文件路径均可创建写入；文本与二进制分别保存和传输，binary_files快照只含元数据。明确开发授权在未确认计划时也进入可写执行，不将“执行/继续”静默降为只读。执行超时保持900秒；health.coding公开file_access=project_all_types、permission_revision=2和execution_timeout_seconds以核对运行版本。Shell和外部联网权限未改变。
