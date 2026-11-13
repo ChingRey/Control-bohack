@@ -191,12 +191,15 @@ class Handler(BaseHTTPRequestHandler):
    parts=urlparse(self.path).path.strip('/').split('/')
    with task_lock(parts[2] if len(parts)>3 and parts[:2]==['api','tasks'] else 'settings-or-create'):
     if parts==['api','settings','teaching']:
-     key=body.get('api_key','');model=body.get('model','deepseek-flash')
-     if not isinstance(key,str) or not key.strip() or '\n' in key or '\r' in key: raise ValueError('请输入本机 DeepSeek API Key')
-     if model not in ('deepseek-flash','deepseek-v4-pro'): raise ValueError('请选择支持的模型')
-     os.environ['DEEPSEEK_API_KEY']=key.strip();os.environ['TEACHING_MODE']='model'
-     os.environ['TEACHING_ENDPOINT']='https://api.deepseek.com/chat/completions';os.environ['TEACHING_MODEL']=model
-     return self.reply(200,{'configured':True,'provider':teaching.TeachingAgent().metadata()})
+      key=body.get('api_key','');model=body.get('model','deepseek-flash');endpoint=body.get('endpoint','https://api.deepseek.com/chat/completions')
+      if not isinstance(key,str) or not key.strip() or '\n' in key or '\r' in key: raise ValueError('请输入本机 API Key')
+      if not isinstance(model,str) or not model.strip() or len(model.strip())>200: raise ValueError('请输入有效的模型名称')
+      if not isinstance(endpoint,str) or len(endpoint.strip())>500: raise ValueError('请输入有效的服务地址')
+      parsed=urlparse(endpoint.strip())
+      if not parsed.hostname or (parsed.scheme!='https' and not(parsed.scheme=='http' and parsed.hostname in ('127.0.0.1','localhost'))): raise ValueError('服务地址必须使用 HTTPS，或指向本机 HTTP 服务')
+      os.environ['TEACHING_API_KEY']=key.strip();os.environ['TEACHING_MODE']='model'
+      os.environ['TEACHING_ENDPOINT']=endpoint.strip();os.environ['TEACHING_MODEL']=model.strip()
+      return self.reply(200,{'configured':True,'provider':teaching.TeachingAgent().metadata()})
     if parts==['api','tasks']:
      tid=str(uuid.uuid4());t=dict(id=tid,title='待办事项 · 示例教程',mode='sample',stage='created',step=0,plan=[],plan_draft=[],messages=[],changes=[],checks=[])
      teaching.state(t)

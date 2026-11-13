@@ -136,7 +136,10 @@ def validate(output, ctx):
 class TeachingAgent:
  @property
  def mode(self): return os.getenv('TEACHING_MODE', 'model' if os.getenv('DEEPSEEK_API_KEY') else 'sample')
- def metadata(self): return {'mode':self.mode,'model':os.getenv('TEACHING_MODEL','deepseek-flash') if self.mode=='model' else 'scripted-demo'}
+ def metadata(self):
+  if self.mode!='model': return {'mode':'sample','model':'scripted-demo'}
+  endpoint=os.getenv('TEACHING_ENDPOINT','https://api.deepseek.com/chat/completions')
+  return {'mode':'model','model':os.getenv('TEACHING_MODEL','deepseek-flash'),'endpoint':endpoint}
  def respond(self, ctx, progress=None):
   progress=progress or (lambda *a:None)
   if self.mode=='sample':

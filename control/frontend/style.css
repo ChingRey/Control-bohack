@@ -23,6 +23,7 @@ header{height:64px;padding:10px 26px}.brand{font-size:25px}.brand b{font-size:30
 @media(max-width:1120px){.workspace{grid-template-columns:180px minmax(520px,1fr) 330px}.journey{gap:11px}.badge{display:none}} 
 .teacher-dialog.discussion-open{position:fixed;z-index:50;inset:8vh 50%;transform:translateX(-50%);width:min(760px,92vw);height:min(76vh,760px);margin:0;border:1px solid #4b6277;border-radius:12px;background:#172432;box-shadow:0 24px 80px #000b;display:flex;flex-direction:column}.teacher-dialog.discussion-open::before{content:"";position:fixed;inset:-20vh -50vw;z-index:-1;background:#0009}.teacher-dialog.discussion-open summary{padding:15px 18px;border-bottom:1px solid #3b5064;font-size:14px}.teacher-dialog.discussion-open summary::after{content:"按 Esc 关闭";float:right;color:#9db0c1;font-size:11px;font-weight:400}.teacher-dialog.discussion-open .messages{max-height:none;flex:1;padding:20px 24px}.teacher-dialog.discussion-open form{margin:0 16px 16px;flex-shrink:0}
 .review-toggle{margin-left:auto;font-size:11px!important;padding:5px 8px!important}.review-card.collapsed #teacher-plan,.review-card.collapsed .review-action{display:none}.review-card.collapsed{padding:10px 12px}
+.sidebar-toggle{margin-left:auto;padding:2px 7px!important;line-height:1.1;font-size:18px!important;background:transparent;border:0;color:#9badbd}.sidebar-toggle:hover{background:#293b4d}.sidebar-collapsed .workspace{grid-template-columns:58px minmax(520px,1fr) 390px}.sidebar-collapsed .files .label{padding:14px 12px}.sidebar-collapsed .files .label span,.sidebar-collapsed .files .project,.sidebar-collapsed .files .aside-note{display:none}.sidebar-collapsed .files nav button{font-size:0;text-align:center;padding:14px 0}.sidebar-collapsed .files nav button em{font-size:13px;margin:0}.sidebar-collapsed .files nav button.active{border-left-width:3px}
 .teacher-tools{display:flex;flex-direction:column;flex:1;min-height:0}.teacher-tools>#open-map{flex:0 0 auto}.teacher-tools .teacher-dialog{display:flex;flex:1;min-height:190px;flex-direction:column;overflow:hidden}.teacher-tools .teacher-dialog .messages{display:block;max-height:none;flex:1;min-height:0;padding:14px;overflow:auto}.teacher-tools .teacher-dialog form{margin:0 10px 10px;flex:0 0 auto}.teacher-tools .teacher-dialog[open]>summary{display:none}
 .teacher-tools .teacher-dialog[open]::before{content:"Teaching Agent · 工作台";display:block;flex:0 0 auto;padding:10px 12px;border-bottom:1px solid #3b4d60;color:#c9e8d4;font-size:12px;font-weight:650}
 .actions #settings.connected{background:#254535;border-color:#5fa97a;color:#c9f4d8}.actions #settings.connected:hover{background:#315a45}
@@ -44,6 +45,7 @@ body.resizing{user-select:none;cursor:grabbing}
 body.resizing textarea{pointer-events:none}
 @media(max-width:1120px){.workspace{grid-template-columns:180px minmax(420px,1fr) 6px var(--teacher);min-width:1006px}}
 @media(max-width:1036px){body{overflow-x:auto}}
+.sidebar-collapsed .workspace{grid-template-columns:58px minmax(420px,1fr) 6px var(--teacher)!important;min-width:874px}
 #filename{display:none}
 .teacher-links{margin:0 14px 10px;padding:10px 11px;gap:10px;border:1px solid #557b68;border-left:3px solid #a7e7bf;border-radius:8px;background:#263b31;box-shadow:inset 0 0 0 1px #a7e7bf12}
 .teacher-links span{color:#d6f1df;white-space:normal;line-height:1.55;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
@@ -85,7 +87,10 @@ body.resizing textarea{pointer-events:none}
 .actions #open-settings{display:grid;width:38px;height:38px;padding:0;place-items:center;font-size:18px;line-height:1}
 
 /* Keep the Teaching Agent workspace fixed in the lower half when review collapses. */
-.teaching{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr) minmax(0,1fr)}
+.teaching{display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);gap:10px;padding:0 10px 10px}
 .teaching-overview{grid-row:1;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:auto}
 .teaching-overview>.teacher-head,.teaching-overview>.teacher-context,.teaching-overview>.review-card,.teaching-overview>.teacher-links{flex:0 0 auto}
-.teaching>.teacher-dialog{grid-row:2;align-self:stretch;flex:none;height:auto;max-height:none;min-height:0;margin:0 14px 12px}
+.teaching>.teacher-dialog{grid-row:2;align-self:stretch;flex:none;width:100%;height:100%;max-height:none;min-height:0;margin:0;border-radius:12px}
+.teaching>.teacher-dialog .messages{padding:20px 22px;font-size:15px;line-height:1.85}
+.teaching>.teacher-dialog form{margin:0 14px 14px;padding:13px 15px}
+.teaching>.teacher-dialog form textarea{height:76px;min-height:64px;font-size:14px}

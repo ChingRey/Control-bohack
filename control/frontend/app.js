@@ -45,7 +45,7 @@ function renderTeacherStatus(){
  settings.textContent=real?'已连接 · '+(task.teaching_provider?.model||'模型'):'连接模型';
  settings.classList.toggle('connected',real);
  settings.title=real?'Teaching Agent 已连接；点击可更换模型或配置':'连接 Teaching Agent 使用的模型';
- document.querySelector('footer > span:last-child').textContent='真实文件与记录 · Coding 固定示例 · 教学结论待验证 · 升级仅预留接口';
+  document.querySelector('footer > span:last-child').textContent='真实文件与记录 · Coding 固定示例 · 学习记录保存在本地';
  const phases={observe:'观察现象',explain:'解释原因',propose:'提出改法',verify:'设计验证',transfer:'迁移检查'};
  const phase=phases[task.teaching?.phase]||'观察现象';
  document.querySelector('.teacher-context').textContent='当前学习重点：'+(task.teaching?.plan?.goal||phase);
@@ -97,6 +97,8 @@ function renderChats(){
 function splitParagraph(text){const sentences=text.match(/[^。！？]+[。！？]?[”’」』]?/g)||[text];const groups=[];let chunk='';for(const sentence of sentences){chunk+=sentence;if(chunk.length>=75){groups.push(chunk);chunk=''}}if(chunk)groups.push(chunk);return groups.join('\n')}
 
 const layoutRoot=document.querySelector('.workspace');
+const filePanel=document.querySelector('.files');const fileLabel=filePanel?.querySelector('.label');
+if(filePanel&&fileLabel){const sidebarToggle=document.createElement('button');sidebarToggle.type='button';sidebarToggle.className='sidebar-toggle';sidebarToggle.title='收起工作区';sidebarToggle.textContent='‹';fileLabel.append(sidebarToggle);const applySidebar=()=>{const collapsed=localStorage.getItem('control-sidebar-collapsed')==='true';document.body.classList.toggle('sidebar-collapsed',collapsed);sidebarToggle.textContent=collapsed?'›':'‹';sidebarToggle.title=collapsed?'展开工作区':'收起工作区';fileLabel.firstChild.textContent=collapsed?'☰':'工作区 '};applySidebar();sidebarToggle.onclick=()=>{localStorage.setItem('control-sidebar-collapsed',String(!document.body.classList.contains('sidebar-collapsed')));applySidebar()}}
 let layout={teacher:390,codeRatio:54};
 try{layout={...layout,...JSON.parse(localStorage.getItem('control-layout')||'{}')}}catch{}
 function applyLayout(){layout.teacher=Math.max(300,Math.min(620,Number(layout.teacher)||390));layout.codeRatio=Math.max(30,Math.min(70,Number(layout.codeRatio)||54));layoutRoot.style.setProperty('--teacher',layout.teacher+'px');layoutRoot.style.setProperty('--code-ratio',layout.codeRatio+'fr');layoutRoot.style.setProperty('--chat-ratio',(100-layout.codeRatio)+'fr')}
