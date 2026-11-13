@@ -4,6 +4,7 @@ import json
 import mimetypes
 import os
 import sqlite3
+import socket
 import threading
 import uuid
 import time
@@ -12,7 +13,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
-from agents import teaching
+from agents import teaching, memory, learning, providers, coding_workflow, opencode_executor
 from agents.coding import PLAN, FILES, SampleCodingAgent
 
 ROOT = Path(__file__).resolve().parent
@@ -32,6 +33,7 @@ def connection():
  try:
   c.execute('CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, body TEXT NOT NULL)')
   c.execute('CREATE TABLE IF NOT EXISTS teaching_history (task_id TEXT, kind TEXT, record_id TEXT, body TEXT NOT NULL, PRIMARY KEY(task_id,kind,record_id))')
+  c.execute('CREATE TABLE IF NOT EXISTS learning_versions (task_id TEXT, revision TEXT, digest TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(task_id,revision))')
   yield c
   c.commit()
  except Exception:
@@ -50,6 +52,14 @@ def save(t):
     for record in records[:-keep]:
      c.execute('INSERT OR IGNORE INTO teaching_history VALUES (?,?,?,?)',(t['id'],kind,str(record[id_field]),json.dumps(record,ensure_ascii=False)))
     del records[:-keep]
+  if s.get('memory'):
+   import hashlib
+   value={'memory':s['memory'],'course_notes':{'summary':course.get('summary',''),'resume_note':course.get('resume_note','')},'learning':s.get('learning',{})}
+   body=memory.encoded(value);digest=hashlib.sha256(body.encode()).hexdigest()
+   revision=f"{s['memory']['revision']}:{s.get('learning',{}).get('revision',0)}"
+   old=c.execute('SELECT digest FROM learning_versions WHERE task_id=? AND revision=?',(t['id'],revision)).fetchone()
+   if old and old[0]!=digest:raise ValueError('学习记录版本冲突，拒绝覆盖旧版本')
+   c.execute('INSERT OR IGNORE INTO learning_versions VALUES (?,?,?,?)',(t['id'],revision,digest,body))
   c.execute('INSERT OR REPLACE INTO tasks VALUES (?,?)', (t['id'], json.dumps(t, ensure_ascii=False)))
 
 def load(tid):
@@ -63,9 +73,16 @@ def project(tid):
 
 def snapshot(t):
  t['files'] = read_project_files(t['id'])
+ if t.get('mode')=='opencode':
+  coding_workflow.state(t)
+  if not t.get('plan_draft'):
+   for m in reversed(t.get('messages',[])):
+    if m.get('channel')=='coding' and m.get('role')=='assistant' and coding_workflow.sync_plan(t,m.get('content','')):break
+ t['coding_provider']={'framework':'opencode' if t.get('mode')=='opencode' else 'sample',**opencode_executor.metadata()}
  t['teaching_provider'] = teaching.TeachingAgent().metadata()
  teaching.state(t)
  t['knowledge_topics']=teaching.KNOWLEDGE
+ t['learning_overview']={'profile':learning.profile(t),'skills':learning.readiness(t)}
  t['preview_url']=f'http://127.0.0.1:{PREVIEW_PORT}/preview/{t["id"]}/index.html' if PREVIEW_PORT else f'/preview/{t["id"]}/index.html'
  return t
 
@@ -121,6 +138,8 @@ def start_teaching(t, action='message'):
    elif result['status']=='completed':
     fresh['messages'].extend(work['messages'][base_count:])
     fresh['teaching']=work['teaching']
+   if not stale and result['status']=='failed' and work['teaching']['memory']['revision']>fresh['teaching']['memory']['revision']:
+    fresh['teaching']['memory']=work['teaching']['memory']
    fresh['teaching_run'].update(result,elapsed_seconds=round(time.time()-job['started_at'],1))
    if result['status']=='failed': teaching.state(fresh)['last_error']=result['error']
    save(fresh)
@@ -131,6 +150,53 @@ def message(t, channel, role, content):
  if channel=='teaching' and role=='assistant': entry['engine']=teaching.TeachingAgent().mode
  t['messages'].append(entry)
 
+
+def start_coding(t, instruction, planning=False, chatting=False):
+ if not opencode_executor.metadata()['configured']:raise ValueError('请先连接Coding模型')
+ if not opencode_executor.binary():raise ValueError('OpenCode尚未安装')
+ job={'id':str(uuid.uuid4()),'status':'running','detail':'Coding Agent正在处理当前阶段…','started_at':time.time()}
+ t['coding_run']=job;save(t)
+ work=json.loads(json.dumps(t));original=read_project_files(t['id']);signature=task_signature(t)
+ packet=coding_workflow.prepare(work,instruction,learning.coding_packet(work,instruction))
+ if chatting:
+  packet={'student_message':instruction,'learning_context':packet['learning_context']}
+ packet['recent_dialogue']=[{'role':m['role'],'content':m['content'][:4000]} for m in work['messages'] if m['channel']=='coding'][-12:]
+ def worker():
+  try:
+   result=opencode_executor.execute(original,packet,planning,chatting)
+   with task_lock(t['id']):
+    fresh=load(t['id'])
+    if fresh.get('coding_run',{}).get('id')!=job['id']:return
+    if task_signature(fresh)!=signature or read_project_files(t['id'])!=original:raise ValueError('项目已变化，拒绝采用过期结果')
+    if chatting:
+     coding_workflow.sync_plan(fresh,result['text'],result['events'])
+     for name,after in result['files'].items():
+      if after!=original.get(name,''):
+       write_project_file(project(t['id'])/name,after)
+       fresh['changes'].append(dict(file=name,before=original.get(name,''),after=after,instruction=instruction))
+    elif planning:
+     text=result['text'].strip()
+     if text.startswith('```'):text='\n'.join(text.splitlines()[1:-1])
+     decoded=json.loads(text)
+     if not isinstance(decoded,dict) or not isinstance(decoded.get('plan'),list):raise ValueError('模型未返回有效阶段计划；请重试明确的开发需求')
+     coding_workflow.set_plan(fresh,decoded['plan'])
+    else:
+     for name,after in result['files'].items():
+      if after!=original.get(name,''):
+       write_project_file(project(t['id'])/name,after)
+       fresh['changes'].append(dict(file=name,before=original.get(name,''),after=after,instruction=instruction))
+     coding_workflow.state(fresh)['checkpoints'][fresh['step']]['status']='executed_pending_review'
+     fresh['step']+=1;fresh['stage']='review'
+    w=coding_workflow.state(fresh);w['status']='paused';w['tool_events']=result['events']
+    w['loads'].append({'phase':work['step'],'rule_versions':[{'id':r['id'],'revision':r['revision']} for r in packet['learning_context']['rules']],'skill_versions':[],'submitted':True,'applied':False})
+    coding_workflow.event(fresh,'turn_finished','OpenCode轮次结束；等待学生审查与确认，未验证行为正确性')
+    message(fresh,'coding','assistant',result['text']);fresh['coding_run'].update(status='completed',detail='已暂停，等待审查');save(fresh)
+  except Exception as e:
+   with task_lock(t['id']):
+    fresh=load(t['id'])
+    if fresh.get('coding_run',{}).get('id')==job['id']:
+     fresh['coding_run'].update(status='failed',detail=str(e) if isinstance(e,ValueError) else '执行器异常：'+type(e).__name__+'；阶段未推进');save(fresh)
+ threading.Thread(target=worker,daemon=True).start()
 
 CODING=SampleCodingAgent(project,write_project_file)
 PREVIEW_PORT=None
@@ -161,10 +227,15 @@ class Handler(BaseHTTPRequestHandler):
  def do_GET(self):
   try:
    parts=urlparse(self.path).path.strip('/').split('/')
-   if parts==['api','health']: return self.reply(200,{'coding_mode':'sample','teaching':teaching.TeachingAgent().metadata(),'storage':'sqlite'})
+   if parts==['api','health']: return self.reply(200,{'coding_mode':'sample_or_opencode','coding':opencode_executor.metadata(),'teaching':teaching.TeachingAgent().metadata(),'storage':'sqlite'})
    if parts==['api','tasks']:
     with connection() as c: rows=c.execute('SELECT body FROM tasks ORDER BY rowid DESC').fetchall()
     return self.reply(200,[{'id':(t:=json.loads(r[0]))['id'],'title':t['title']} for r in rows])
+   if len(parts)==4 and parts[:2]==['api','tasks'] and parts[3] in ('learning','learning-record.md'):
+    with task_lock(parts[2]):
+     task=load(parts[2]);teaching.state(task)
+     if parts[3]=='learning':return self.reply(200,{'memory':memory.view(task),'learning':learning.view(task)})
+     return self.reply(200,memory.report(task).encode('utf-8'),'text/markdown; charset=utf-8')
    if len(parts)==3 and parts[:2]==['api','tasks']:
     with task_lock(parts[2]): return self.reply(200,snapshot(load(parts[2])))
    if len(parts)==3 and parts[0]=='preview':
@@ -190,19 +261,24 @@ class Handler(BaseHTTPRequestHandler):
    if not isinstance(body,dict): raise ValueError('请求必须是对象')
    parts=urlparse(self.path).path.strip('/').split('/')
    with task_lock(parts[2] if len(parts)>3 and parts[:2]==['api','tasks'] else 'settings-or-create'):
+    if parts==['api','settings','coding']:
+     opencode_executor.configure(body.get('api_key'),body.get('model'),body.get('region'))
+     return self.reply(200,opencode_executor.metadata())
     if parts==['api','settings','teaching']:
-     key=body.get('api_key','');model=body.get('model','deepseek-flash')
-     if not isinstance(key,str) or not key.strip() or '\n' in key or '\r' in key: raise ValueError('请输入本机 DeepSeek API Key')
-     if model not in ('deepseek-flash','deepseek-v4-pro'): raise ValueError('请选择支持的模型')
-     os.environ['DEEPSEEK_API_KEY']=key.strip();os.environ['TEACHING_MODE']='model'
-     os.environ['TEACHING_ENDPOINT']='https://api.deepseek.com/chat/completions';os.environ['TEACHING_MODEL']=model
+     provider=body.get('provider','deepseek')
+     providers.configure(provider,body.get('api_key',''),body.get('model','deepseek-flash' if provider=='deepseek' else ''))
      return self.reply(200,{'configured':True,'provider':teaching.TeachingAgent().metadata()})
     if parts==['api','tasks']:
      tid=str(uuid.uuid4());t=dict(id=tid,title='待办事项 · 示例教程',mode='sample',stage='created',step=0,plan=[],plan_draft=[],messages=[],changes=[],checks=[])
      teaching.state(t)
-     for name,content in FILES.items(): (project(tid)/name).write_text(content,encoding='utf-8')
-     message(t,'coding','assistant','你好，先说说你想开发什么。初版使用固定待办教程，示例 Agent 不调用真实模型。')
+     if body.get('coding_mode')=='opencode':
+      t.update(mode='opencode',title='OpenCode · 分阶段开发（待连接模型）');coding_workflow.state(t)
+     if t['mode']!='opencode':
+      for name,content in FILES.items(): (project(tid)/name).write_text(content,encoding='utf-8')
+     if t['mode']=='sample':message(t,'coding','assistant','你好，先说说你想开发什么。初版使用固定待办教程，示例 Agent 不调用真实模型。')
      message(t,'teaching','assistant','我会陪你检查计划和代码。先发送一句需求，再一起明确：什么样的输入应该被接受？')
+     if t['mode']=='opencode':
+      message(t,'coding','assistant','你好，有什么想开发的吗？我们可以先聊聊你的想法。')
      if body.get('scenario')=='teaching':
       t['title']='空白输入审查 · 教学预置示例';t['plan']=PLAN
       for step in range(2):
@@ -213,14 +289,33 @@ class Handler(BaseHTTPRequestHandler):
     else:
      if len(parts)<4 or parts[:2]!=['api','tasks']: return self.reply(404,{'error':'接口不存在'})
      t=load(parts[2]); action='/'.join(parts[3:]); text=body.get('message','')
+     if t.get('coding_run',{}).get('status') in ('queued','running'):raise ValueError('Coding正在执行，请稍等')
      if t.get('teaching_run',{}).get('status') in ('queued','running'): raise ValueError('教师正在处理上一条消息，请稍等')
      if not isinstance(text,str) or len(text)>12000: raise ValueError('消息格式不正确或过长')
      observations=body.get('runtime_observations')
      if isinstance(observations,list):
       t['runtime_observations']=[{'type':x.get('type'),'message':x.get('message','')[:500],'line':x.get('line',0),'source':'browser_report_not_verified_test'} for x in observations[-20:] if isinstance(x,dict) and x.get('type') in ('ready','error') and isinstance(x.get('message'),str)]
-     if action=='plan':
+     if action=='coding/generate-plan':
+      if t.get('mode')!='opencode' or t['plan']:raise ValueError('当前不能生成计划')
+      if not text.strip():raise ValueError('请输入需求')
+      message(t,'coding','user',text);start_coding(t,text,True);return self.reply(202,snapshot(t))
+     elif action=='coding/plan-draft':
+      if t.get('mode')!='opencode':raise ValueError('仅OpenCode工作流支持此入口')
+      coding_workflow.set_plan(t,body.get('plan'));message(t,'coding','user','阶段计划草稿：\n'+'\n'.join(t['plan_draft']))
+     elif action=='coding/capabilities':
+      if t.get('mode')!='opencode':raise ValueError('仅OpenCode工作流支持此入口')
+      enabled=body.get('experience_enabled')
+      if type(enabled) is not bool:raise ValueError('经验开关必须是布尔值')
+      coding_workflow.state(t)['experience_enabled']=enabled
+      coding_workflow.event(t,'experience_toggle','经验加载'+('启用' if enabled else '停用'))
+     elif action=='coding/preflight':
+      if t.get('mode')!='opencode' or not t['plan'] or t['step']>=len(t['plan']):raise ValueError('请先确认阶段计划')
+      packet=coding_workflow.prepare(t,t['plan'][t['step']],learning.coding_packet(t,t['plan'][t['step']]))
+      coding_workflow.inspect_phase(t,packet)
+     elif action=='plan':
       if t['plan']: raise ValueError('已有计划，请在聊天中补充要求')
       if not text.strip(): raise ValueError('先输入需求')
+      if t.get('mode')=='opencode':raise ValueError('模型尚未连接，请在阶段草稿入口设置计划；不会生成固定示例计划')
       message(t,'coding','user',text);t['plan_draft']=PLAN.copy();t['stage']='planning'
       message(t,'coding','assistant','这是固定教程的计划草稿，尚未开始开发：\n\n'+ '\n'.join(f'{i+1}. {p}' for i,p in enumerate(t['plan_draft']))+'\n\n请与教师讨论目标和拆分方式，编辑并确认后才会成为开发计划。')
      elif action=='plan/confirm':
@@ -228,14 +323,17 @@ class Handler(BaseHTTPRequestHandler):
       if t['plan'] or not t.get('plan_draft'): raise ValueError('当前没有可确认的计划草稿')
       if not body.get('confirmed') or not isinstance(steps,list) or not 1<=len(steps)<=12 or any(not isinstance(x,str) or not x.strip() or len(x)>300 for x in steps): raise ValueError('请明确确认有效的分步计划')
       t['plan']=[x.strip() for x in steps];t['stage']='review'
+      if t.get('mode')=='opencode':coding_workflow.confirm(t)
       message(t,'coding','user','我确认开发计划：\n'+'\n'.join(t['plan']))
-      message(t,'coding','assistant','开发计划已确认；当前仍未执行代码。示例执行器按固定待办教材演示，真实模型尚未接入。')
+      message(t,'coding','assistant','阶段计划已确认，每阶段结束后暂停；模型/API尚未连接，当前不执行代码。' if t.get('mode')=='opencode' else '开发计划已确认；当前仍未执行代码。示例执行器按固定待办教材演示，真实模型尚未接入。')
      elif action in ['coding/messages','teaching/messages']:
       if not text.strip(): raise ValueError('消息不能为空')
       ch=action.split('/')[0];message(t,ch,'user',text)
+      if ch=='coding' and t.get('mode')=='opencode':
+       start_coding(t,text,chatting=True);return self.reply(202,snapshot(t))
       if ch=='teaching':
        start_teaching(t);return self.reply(202,snapshot(t))
-      else: message(t,ch,'assistant','补充要求已保存，Teaching Agent 也可以读取。点击执行前可在确认框中编辑本步指令；示例适配器仍按固定教程修改文件。')
+      else: message(t,ch,'assistant','补充要求已保存，Teaching可读取；模型/API未配置，当前不会自动改代码。' if t.get('mode')=='opencode' else '补充要求已保存，Teaching Agent 也可以读取。点击执行前可在确认框中编辑本步指令；示例适配器仍按固定教程修改文件。')
      elif action in ('teaching/review','evaluate'):
       start_teaching(t,'review' if action=='teaching/review' else 'evaluate');return self.reply(202,snapshot(t))
      elif action=='teaching/knowledge':
@@ -264,14 +362,30 @@ class Handler(BaseHTTPRequestHandler):
        'suggestion':s['turns'][-1]['result']['upgrade_suggestion'],
        'code_hash':s['turns'][-1]['code_hash'],'applied':False}
       s['upgrade_requests'].append(proposal)
+     elif action.startswith('experiences/'):
+      pieces=action.split('/')
+      if len(pieces)!=3:raise ValueError('经验操作路径无效')
+      learning.set_experience(t,pieces[1],pieces[2],body.get('confirmed'))
+     elif action.startswith('skill-unlocks/'):
+      pieces=action.split('/')
+      if len(pieces)!=2:raise ValueError('Skill申请路径无效')
+      learning.request_unlock(t,pieces[1],body.get('confirmed'))
      elif action=='steps/run':
+      if t.get('mode')=='opencode':
+       if body.get('confirmed') is not True or type(body.get('expected_step')) is not int or body['expected_step']!=t['step'] or not t['plan'] or t['step']>=len(t['plan']):raise ValueError('请确认有效的当前阶段')
+       instruction=body.get('instruction','')
+       if not isinstance(instruction,str) or not instruction.strip() or len(instruction)>12000:raise ValueError('请填写本步指令')
+       message(t,'coding','user','确认执行：'+instruction);start_coding(t,instruction);return self.reply(202,snapshot(t))
       if not body.get('confirmed'): raise ValueError('需要学生明确确认')
       if not t['plan'] or t['step']>=len(t['plan']): raise ValueError('当前没有可执行步骤')
       if type(body.get('expected_step')) is not int: raise ValueError('expected_step 必须是整数')
       if body.get('expected_step')!=t['step']: raise ValueError('步骤已变化，请刷新后确认')
       instruction=body.get('instruction','')
       if not isinstance(instruction,str) or not instruction.strip() or len(instruction)>12000: raise ValueError('请填写确认指令')
-      message(t,'coding','user','确认执行：'+instruction);answer=CODING.step(t,instruction);t['step']+=1;t['stage']='review';message(t,'coding','assistant',answer)
+      message(t,'coding','user','确认执行：'+instruction)
+      packet=learning.coding_packet(t,instruction)
+      ls=learning.state(t);ls['coding_loads'].append({'step':t['step'],'rule_versions':[{'id':r['id'],'revision':r['revision']} for r in packet['rules']], 'applied':False,'adapter':'sample_records_only'});ls['revision']+=1
+      answer=CODING.step(t,instruction,packet);t['step']+=1;t['stage']='review';message(t,'coding','assistant',answer)
      elif action=='files':
       name=body.get('path');content=body.get('content')
       if name not in FILES or not isinstance(content,str): raise ValueError('文件或内容不正确')
@@ -292,11 +406,27 @@ class Handler(BaseHTTPRequestHandler):
   except (ValueError,TypeError,KeyError,json.JSONDecodeError) as e: self.reply(400,{'error':str(e)})
   except (OSError,sqlite3.Error): self.reply(500,{'error':'文件或记录保存失败，请检查本地文件与存储后重试'})
 
+class LocalHTTPServer(ThreadingHTTPServer):
+ # On Windows SO_REUSEADDR can let old/new backends share a port.
+ allow_reuse_address=False
+ def server_bind(self):
+  if hasattr(socket,'SO_EXCLUSIVEADDRUSE'):
+   self.socket.setsockopt(socket.SOL_SOCKET,socket.SO_EXCLUSIVEADDRUSE,1)
+  super().server_bind()
+
 def create_preview_server(preferred_port):
  for port in [preferred_port,0]:
-  try:return ThreadingHTTPServer(('127.0.0.1',port),PreviewHandler)
+  try:return LocalHTTPServer(('127.0.0.1',port),PreviewHandler)
   except OSError:
    if port==0:raise
+
+def recover_interrupted(t):
+ changed=False
+ for key in ('coding_run','teaching_run'):
+  if t.get(key,{}).get('status') in ('queued','running'):
+   t[key].update(status='failed',detail='服务重启中断了上次执行，请检查项目后重试')
+   changed=True
+ return changed
 
 if __name__=='__main__':
  parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8772);args=parser.parse_args()
@@ -304,10 +434,10 @@ if __name__=='__main__':
  with connection() as c:
   for (body,) in c.execute('SELECT body FROM tasks').fetchall():
    t=json.loads(body)
-   if t.get('teaching_run',{}).get('status') in ('queued','running'):
-    t['teaching_run'].update(status='failed',detail='服务重启中断了上次回复，可重试')
+   if recover_interrupted(t):
     c.execute('UPDATE tasks SET body=? WHERE id=?',(json.dumps(t,ensure_ascii=False),t['id']))
- server=ThreadingHTTPServer(('127.0.0.1',args.port),Handler)
+ try:server=LocalHTTPServer(('127.0.0.1',args.port),Handler)
+ except OSError:raise SystemExit('工作台端口已被占用，请先关闭旧后台，或使用 --port 选择其他端口。') from None
  try:preview_server=create_preview_server(args.port+1)
  except OSError as err:
   server.server_close();raise SystemExit('无法启动项目预览，请检查本机可用端口。') from None

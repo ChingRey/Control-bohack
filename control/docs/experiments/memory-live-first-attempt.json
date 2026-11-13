@@ -1,0 +1,15 @@
+{
+  "mode": "real_model_synthetic_dialogue",
+  "task_id": "2af6d0dd-f57b-4f2d-b502-66a6883133f2",
+  "provider": {
+    "mode": "model",
+    "model": "deepseek-flash"
+  },
+  "status": "failed",
+  "memory_revision": 1,
+  "covered_through": 52,
+  "raw_message_count": 65,
+  "skill_installed": false,
+  "human_review_required": true,
+  "error": "Teaching 请求失败或响应格式错误；请检查服务配置后重试，原始作答已保存。"
+}
