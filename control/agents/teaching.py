@@ -40,6 +40,31 @@ COURSE_OBJECTIVES = [
  {'id':'input-validation','title':'审查输入处理并解释原因'},
  {'id':'verification','title':'设计验证并检查数据保留'}]
 
+# Immutable strategy definition for the second-version teaching pilot.
+STRATEGIES = [{
+ 'id':'todo-input-v1','family_id':'todo-input-validation','version':1,
+ 'name':'待办输入边界：先观察再分级提示','status':'active',
+ 'scope':'todo-empty-input-validation',
+ 'content':{
+  'steps':[
+   '先让学生预测并观察正常输入、空输入和纯空格输入，不先指出缺陷位置。',
+   '追问观察到的现象及输入值从表单进入列表的代码依据。',
+   '只在学生卡住时逐级提示：比较输入 → 查看提交处理 → 解释空白规范化和空值判断。',
+   '让学生用自己的话提出修复要求和验证办法；执行修改前必须由学生确认。',
+   '检查正常输入仍可添加、空输入和纯空格被拒绝；源码标记不能代替行为观察。',
+   '最后提供不同表面情境的独立迁移题，不先给提示或答案。'],
+  'hint_levels':[
+   '只追问现象和判断依据。',
+   '提示比较正常值、空值和纯空格值。',
+   '提示查看表单提交处理中的输入读取和条件判断。',
+   '解释首尾空白处理和空值检查，但不提供当前练习的完整修复代码。'],
+  'out_of_scope':['数据持久化','完成状态','视觉样式','代码风格'],
+  'transfer_question':LESSON['transfer_question']
+ }}]
+
+def strategy(strategy_id):
+ return next((item for item in STRATEGIES if item['id']==strategy_id),None)
+
 def state(t):
  s=t.setdefault('teaching', {'phase':'observe','hint_level':0,'assessment':'insufficient',
   'turns':[], 'transfer_answer':None,'upgrade_requests':[],'plan':{},'pending_transfer':None})
@@ -54,6 +79,7 @@ def state(t):
 
 def context(t, action):
  s=state(t)
+ active_strategy=strategy(t.get('strategy_version_id'))
  files=t.get('files',{})
  code_hash=hashlib.sha256(json.dumps(files,sort_keys=True).encode()).hexdigest()
  # One bounded tutorial project, never arbitrary workspace files.
@@ -65,7 +91,7 @@ def context(t, action):
  selected.update({m['id']:m for m in students if m['id'] in remembered})
  course_view={**s['course'],'checkpoints':s['course']['checkpoints'][-8:],
   'objectives':[{**g,'observations':g['observations'][-5:],'evidence_ids':g['evidence_ids'][-10:]} for g in s['course']['objectives']]}
- return {'action':action,'lesson':LESSON,'phase':s['phase'],'hint_level':s['hint_level'],
+ return {'action':action,'lesson':LESSON,'strategy':active_strategy,'phase':s['phase'],'hint_level':s['hint_level'],
   'plan':t['plan'],'plan_draft':t.get('plan_draft',[]),'plan_confirmed':bool(t['plan']),'step':t['step'],
   'project_purpose':'待办网页：用户添加事项、标记完成，并讨论输入限制和数据保留。',
   'knowledge_map':KNOWLEDGE,
@@ -284,7 +310,9 @@ def run(t, action='message', progress=None):
  if output['teaching_action']=='ask_transfer':
   s['pending_transfer']={'question':output['transfer_question'],'code_hash':ctx['code_hash']}
   s['transfer_answer']=None
- s['turns'].append({'id':turn_id,'action':action,'code_hash':ctx['code_hash'],'loaded_skills':list(ctx['loaded_skills']),
+ s['turns'].append({'id':turn_id,'action':action,'strategy_version_id':t.get('strategy_version_id'),
+  'code_hash':ctx['code_hash'],'loaded_skills':list(ctx['loaded_skills']),
+  'created_at':time.time(),
   'provider':agent.metadata(),'phase_before':ctx['phase'],'tools':getattr(agent,'tool_trace',[]),'result':output})
  s['next_turn_id']=turn_id+1
  return output['reply']

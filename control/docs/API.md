@@ -9,8 +9,9 @@
 | 顺序 | 方法与路径 | 输入 | 输出或行为 |
 |---|---|---|---|
 | 连接 | GET `/api/health` | 无 | coding_mode、teaching 的 mode/model、storage |
+| 策略目录 | GET `/api/strategies` | 无 | 返回已登记的不可变策略版本、正文哈希和当前状态 |
 | 配置 | POST `/api/settings/teaching` | api_key、model（可省略） | configured、provider；不返回密钥 |
-| 创建 | POST `/api/tasks` | `{}` | 新任务，无确认计划；`scenario: "teaching"` 则直接载入含遗漏的审查版本 |
+| 创建 | POST `/api/tasks` | `{}` | 新任务，无确认计划；`scenario: "teaching"` 则创建独立输入审查教学任务并绑定 V1；页面“教学示例”按钮调用此场景 |
 | 恢复 | GET `/api/tasks/:id` | 无 | 当前快照；前端也用它轮询教师状态 |
 | 草稿 | POST `…/plan` | message | 固定计划草稿，保存学生原话并启动教师审查，返回202 |
 | 讨论 | POST `…/coding/messages` | message | 保存补充要求和固定回复；不会驱动真实编程 |
@@ -56,10 +57,20 @@
 | teaching.turns | 最近教学轮次，含加载Skill、工具记录、校验后的结构化结果 |
 | teaching.assessment | insufficient / developing / candidate；candidate仍待复核 |
 | teaching.pending_transfer、transfer_answer | 教师提出的迁移题及学生明确提交的作答 |
+| task_definition_id、task_definition_version | 教学任务标识与版本；内置空白输入审查示例为 `todo-empty-input-validation` / `1` |
+| teaching_session_id、strategy_version_id、teaching_strategy | 会话标识、绑定的策略版本 ID，以及该版本的只读定义；普通项目可为空 |
 | teaching.upgrade_requests | 待复核能力改进申请；没有安装效果 |
 | knowledge_topics | 页面技术选学主题 |
 
 消息证据ID是messages数组下标。当前聊天不裁剪、不重排；扩展存储时必须保留证据ID映射。模型接续摘要不是事实证明。
+
+## 第二版教学策略记录（当前实现）
+
+- 内置教学示例绑定 `todo-input-v1`；普通新项目暂不绑定该任务专用策略。
+- `strategy_versions` 保存策略定义、正文哈希和初始状态；发布后的正文按版本 ID 固定，调整策略要新增版本。
+- `teaching_sessions` 保存任务定义 ID/版本、策略版本和会话时间；`teaching_events` 追加保存教师回合、教学频道学生原话和明确提交的迁移作答。
+- `teaching_events` 使用确定性事件 ID 与 `INSERT OR IGNORE`，重复保存不会覆盖早先证据。事件携带会话和策略版本，供后续候选分析关联。
+- 这一步只建立 V1 注册与证据留存；候选策略生成、审核状态流转、新任务对照试用、策略启用/回退和管理页面尚未实现。
 
 ## 给A/B/C/D的接入约定
 

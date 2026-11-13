@@ -56,6 +56,9 @@ class BackendTest(unittest.TestCase):
 
  def test_teaching_fixture_and_upgrade_denial(self):
   t=self.call('/tasks',{'scenario':'teaching'});path='/tasks/'+t['id']
+  self.assertEqual(t['task_definition_id'],'todo-empty-input-validation')
+  self.assertEqual(t['strategy_version_id'],'todo-input-v1')
+  self.assertEqual(t['teaching_strategy']['version'],1)
   self.assertEqual(t['step'],2)
   self.assertIn('list.append(li)',t['files']['app.js'])
   self.assertNotIn('localStorage',t['files']['app.js'])
@@ -63,6 +66,23 @@ class BackendTest(unittest.TestCase):
   self.assertIn('plan',t['teaching'])
   with self.assertRaises(HTTPError):self.call(path+'/teaching/transfer',{'message':'我懂了'})
   with self.assertRaises(HTTPError):self.call(path+'/upgrade-proposals',{'confirmed':True})
+
+ def test_strategy_registry_and_teaching_events_are_persisted_once(self):
+  t=self.call('/tasks',{'scenario':'teaching'});stored=b.load(t['id']);s=stored['teaching']
+  self.assertEqual(s['phase'],'observe')
+  strategies=self.call('/strategies')
+  strategy=next(item for item in strategies if item['id']=='todo-input-v1')
+  self.assertEqual(strategy['status'],'active')
+  self.assertEqual(len(strategy['content_hash']),64)
+  b.message(stored,'teaching','user','空格似乎也被添加了')
+  s['turns'].append({'id':0,'strategy_version_id':'todo-input-v1','created_at':time.time(),'result':{'assessment':'developing'}})
+  s['transfer_answer']={'id':'transfer-test-1','message_id':len(stored['messages']),'answer':'昵称只输入空格时不应创建昵称。','created_at':time.time()}
+  b.save(stored);b.save(stored)
+  with b.connection() as c:
+   session=c.execute('SELECT task_definition_id,task_definition_version,strategy_version_id FROM teaching_sessions WHERE session_id=?',(t['id'],)).fetchone()
+   events=c.execute('SELECT event_type,strategy_version_id FROM teaching_events WHERE session_id=? ORDER BY event_type',(t['id'],)).fetchall()
+  self.assertEqual(session,('todo-empty-input-validation',1,'todo-input-v1'))
+  self.assertEqual(sorted(events),[('student_message','todo-input-v1'),('teaching_turn','todo-input-v1'),('transfer_answer','todo-input-v1')])
 
  def test_send_acknowledges_before_model_finishes(self):
   t=self.call('/tasks',{});release=threading.Event();entered=threading.Event()

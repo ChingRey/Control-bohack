@@ -1,5 +1,6 @@
 """Local Control workbench: sample coding, configurable teaching, SQLite records."""
 import argparse
+import hashlib
 import json
 import mimetypes
 import os
@@ -32,6 +33,17 @@ def connection():
  try:
   c.execute('CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, body TEXT NOT NULL)')
   c.execute('CREATE TABLE IF NOT EXISTS teaching_history (task_id TEXT, kind TEXT, record_id TEXT, body TEXT NOT NULL, PRIMARY KEY(task_id,kind,record_id))')
+  c.execute('CREATE TABLE IF NOT EXISTS strategy_versions (id TEXT PRIMARY KEY, family_id TEXT NOT NULL, version INTEGER NOT NULL, body TEXT NOT NULL, content_hash TEXT NOT NULL, status TEXT NOT NULL, created_at REAL NOT NULL)')
+  c.execute('CREATE TABLE IF NOT EXISTS teaching_sessions (session_id TEXT PRIMARY KEY, task_definition_id TEXT, task_definition_version INTEGER, strategy_version_id TEXT, created_at REAL NOT NULL, updated_at REAL NOT NULL)')
+  c.execute('CREATE TABLE IF NOT EXISTS teaching_events (event_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, event_type TEXT NOT NULL, strategy_version_id TEXT, payload TEXT NOT NULL, created_at REAL NOT NULL)')
+  c.execute('CREATE INDEX IF NOT EXISTS teaching_events_session_idx ON teaching_events(session_id,created_at)')
+  c.execute('CREATE INDEX IF NOT EXISTS teaching_events_strategy_idx ON teaching_events(strategy_version_id,event_type)')
+  for item in teaching.STRATEGIES:
+   definition={key:value for key,value in item.items() if key!='status'}
+   body=json.dumps(definition,ensure_ascii=False,sort_keys=True,separators=(',',':'))
+   content_hash=hashlib.sha256(body.encode('utf-8')).hexdigest()
+   c.execute('INSERT OR IGNORE INTO strategy_versions VALUES (?,?,?,?,?,?,?)',
+    (item['id'],item['family_id'],item['version'],body,content_hash,item['status'],time.time()))
   yield c
   c.commit()
  except Exception:
@@ -43,6 +55,25 @@ def connection():
 def save(t):
  with connection() as c:
   s=t.get('teaching',{});course=s.get('course',{})
+  session_id=t.get('teaching_session_id',t['id'])
+  created_at=t.get('session_started_at',time.time())
+  strategy_id=t.get('strategy_version_id')
+  c.execute('INSERT INTO teaching_sessions VALUES (?,?,?,?,?,?) ON CONFLICT(session_id) DO UPDATE SET task_definition_id=excluded.task_definition_id,task_definition_version=excluded.task_definition_version,strategy_version_id=excluded.strategy_version_id,updated_at=excluded.updated_at',
+   (session_id,t.get('task_definition_id'),t.get('task_definition_version'),strategy_id,created_at,time.time()))
+  for index,item in enumerate(t.get('messages',[])):
+   if item.get('channel')=='teaching' and item.get('role')=='user':
+    event_id=f'{session_id}:message:{index}'
+    c.execute('INSERT OR IGNORE INTO teaching_events VALUES (?,?,?,?,?,?)',
+     (event_id,session_id,'student_message',strategy_id,json.dumps({'message_id':index,'content':item.get('content','')},ensure_ascii=False),time.time()))
+  for turn in s.get('turns',[]):
+   event_id=f"{session_id}:turn:{turn['id']}"
+   c.execute('INSERT OR IGNORE INTO teaching_events VALUES (?,?,?,?,?,?)',
+    (event_id,session_id,'teaching_turn',turn.get('strategy_version_id',strategy_id),json.dumps(turn,ensure_ascii=False),turn.get('created_at',time.time())))
+  answer=s.get('transfer_answer')
+  if answer:
+   answer_id=answer.get('id',str(answer.get('message_id','unknown')))
+   c.execute('INSERT OR IGNORE INTO teaching_events VALUES (?,?,?,?,?,?)',
+    (f'{session_id}:transfer:{answer_id}',session_id,'transfer_answer',strategy_id,json.dumps(answer,ensure_ascii=False),answer.get('created_at',time.time())))
   collections=[('turn',s.get('turns',[]),20,'id'),('checkpoint',course.get('checkpoints',[]),40,'turn')]
   collections.extend(('observation:'+g['id'],g.get('observations',[]),20,'turn') for g in course.get('objectives',[]))
   for kind,records,keep,id_field in collections:
@@ -65,12 +96,13 @@ def snapshot(t):
  t['files'] = read_project_files(t['id'])
  t['teaching_provider'] = teaching.TeachingAgent().metadata()
  teaching.state(t)
+ t['teaching_strategy'] = teaching.strategy(t.get('strategy_version_id'))
  t['knowledge_topics']=teaching.KNOWLEDGE
  t['preview_url']=f'http://127.0.0.1:{PREVIEW_PORT}/preview/{t["id"]}/index.html' if PREVIEW_PORT else f'/preview/{t["id"]}/index.html'
  return t
 
 def task_signature(t):
- fields=('messages','changes','plan','plan_draft','step','teaching','checks','runtime_observations')
+ fields=('messages','changes','plan','plan_draft','step','teaching','checks','runtime_observations','strategy_version_id','task_definition_version')
  return json.dumps({key:t.get(key) for key in fields},sort_keys=True,ensure_ascii=False)
 
 def read_project_files(tid):
@@ -162,6 +194,9 @@ class Handler(BaseHTTPRequestHandler):
   try:
    parts=urlparse(self.path).path.strip('/').split('/')
    if parts==['api','health']: return self.reply(200,{'coding_mode':'sample','teaching':teaching.TeachingAgent().metadata(),'storage':'sqlite'})
+   if parts==['api','strategies']:
+    with connection() as c: rows=c.execute('SELECT body,content_hash,status FROM strategy_versions ORDER BY family_id,version').fetchall()
+    return self.reply(200,[{**json.loads(body),'content_hash':content_hash,'status':status} for body,content_hash,status in rows])
    if parts==['api','tasks']:
     with connection() as c: rows=c.execute('SELECT body FROM tasks ORDER BY rowid DESC').fetchall()
     return self.reply(200,[{'id':(t:=json.loads(r[0]))['id'],'title':t['title']} for r in rows])
@@ -201,7 +236,10 @@ class Handler(BaseHTTPRequestHandler):
       os.environ['TEACHING_ENDPOINT']=endpoint.strip();os.environ['TEACHING_MODEL']=model.strip()
       return self.reply(200,{'configured':True,'provider':teaching.TeachingAgent().metadata()})
     if parts==['api','tasks']:
-     tid=str(uuid.uuid4());t=dict(id=tid,title='待办事项 · 示例教程',mode='sample',stage='created',step=0,plan=[],plan_draft=[],messages=[],changes=[],checks=[])
+     tid=str(uuid.uuid4());is_teaching_example=body.get('scenario')=='teaching'
+     t=dict(id=tid,title='待办事项 · 示例教程',mode='sample',stage='created',step=0,plan=[],plan_draft=[],messages=[],changes=[],checks=[],
+      teaching_session_id=tid,session_started_at=time.time(),task_definition_id='todo-empty-input-validation' if is_teaching_example else None,
+      task_definition_version=1 if is_teaching_example else None,strategy_version_id='todo-input-v1' if is_teaching_example else None)
      teaching.state(t)
      for name,content in FILES.items(): (project(tid)/name).write_text(content,encoding='utf-8')
      message(t,'coding','assistant','你好，先说说你想开发什么。初版使用固定待办教程，示例 Agent 不调用真实模型。')
@@ -254,7 +292,7 @@ class Handler(BaseHTTPRequestHandler):
       s=teaching.state(t)
       if not s.get('pending_transfer'): raise ValueError('教师尚未提出迁移题')
       if not text.strip(): raise ValueError('请提交迁移题作答')
-      s['transfer_answer']={'question':s['pending_transfer']['question'],'answer':text,'message_id':len(t['messages'])}
+      s['transfer_answer']={'id':str(uuid.uuid4()),'question':s['pending_transfer']['question'],'answer':text,'message_id':len(t['messages']),'created_at':time.time()}
       message(t,'teaching','user',text);start_teaching(t,'evaluate');return self.reply(202,snapshot(t))
      elif action=='upgrade-proposals':
       s=teaching.state(t)

@@ -57,6 +57,14 @@
 
 能力出口 POST /api/tasks/:id/upgrade-proposals，输入 confirmed=true，只生成 pending_review、method=null、applied=false 的建议，未实现安装或执行。
 
+## 第二版：跨会话策略试点
+
+内置教学示例使用策略版本 `todo-input-v1`，对应任务 `todo-empty-input-validation` 版本 1。策略内容规定观察顺序、分级提示、学生确认、当前任务检查和独立迁移；策略通过上下文提供给 Teaching Agent，单次会话不能改写它。普通项目不绑定这条任务专用策略。
+
+后端首次初始化 SQLite 时注册策略正文和 SHA-256 哈希。每个教学示例保存 `teaching_session_id` 与 `strategy_version_id`；`teaching_events` 追加保存教师回合、教学频道学生原话和明确提交的迁移作答，并关联任务和策略版本。相同事件 ID 重复写入不会覆盖旧记录。策略正文需要改变时创建新版本 ID，不原地修改已注册版本。
+
+当前仅完成 V1 注册与教学证据持久化，并提供只读 `GET /api/strategies`。尚未实现跨会话分析、候选策略生成与审核、V1/V2 试用分配、启用/回退或策略管理界面。现有 Skill `upgrade-proposals` 仍然只是另一类待复核建议，不代表 Teaching 策略已进化。
+
 ## 验证脚本（人工与模型交互，不代表真实学生实验）
 
 按需要选择，不必照顺序：
