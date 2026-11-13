@@ -6,7 +6,8 @@
 
 - **Teaching 已有真实模型适配器**：DeepSeek Chat Completions 风格 API、工具调用、JSON 输出校验；是否真实调用由 `teaching_provider.mode` 判断。
 - **Coding 是示例**：`agents/coding.py` 按步骤写固定待办代码；需求草稿也来自固定 `PLAN`。用户任意修改计划不会让它理解新计划。
-- **进化没有落地**：只有 pending_review 升级申请，`method=null`、`applied=false`；没有 Skill 安装、自动加分、能力对照或版本回退。
+- **Teaching 策略进化只完成了起步**：内置示例绑定固定 `todo-input-v1`，SQLite 注册策略正文哈希并追加保存教学回合、学生原话和明确提交的迁移作答；尚无候选策略分析/审核、对照试用、启用或回退。
+- **Coding Skill 进化没有落地**：只有 pending_review 升级申请，`method=null`、`applied=false`；没有 Skill 安装、自动加分、能力对照或回退。
 - 已有 25 项自动测试，使用临时数据和模拟响应；没有证明长期教学有效或模型能力稳定提升。
 
 先读 README 和 docs/API.md，再改代码；不要参考已移除旧版的接口设想。不要把未实现功能写成已实现。
@@ -20,7 +21,7 @@
 | `agents/coding.py` 的 SampleCodingAgent.step | 按示例步骤写文件，追加 changes | 任务字典、确认指令 → 回复字符串；会修改项目与 changes |
 | `backend.py` 的 start_teaching | 保存学生消息后的后台教学任务 | 任务、动作 → 后台线程；立即由接口返回 202 |
 | `agents/teaching.py` 的 context / TeachingAgent.respond / validate / run | 组织材料、调用模型、检查结果、更新教学记录 | 任务和动作 → 回复文本；在工作副本中更新 teaching |
-| `backend.py` 的 save / load | 当前任务 JSON 与教学历史归档 | 任务字典 ↔ SQLite |
+| `backend.py` 的 save / load | 当前任务 JSON、教学历史归档、策略版本注册及跨会话教学事件 | 任务字典 ↔ SQLite |
 | `backend.py` 的 PreviewHandler | 独立来源的静态项目预览 | 三个允许文件 → 浏览器 HTML/CSS/JS |
 
 教师调用链：接口先保存学生原话 → `start_teaching` 拷贝上下文 → 后台读源码 → `context` → 模型及只读工具 → `validate` → 更新课程记录 → 重新读取最新任务并合并结果。前端约每 900ms GET 一次任务，完成后展示回复。当前没有 SSE 或逐字流式输出。
@@ -51,7 +52,7 @@
 
 ## 数据和故障处理
 
-- `data/workbench/records.sqlite3`：tasks 表保存任务 JSON；teaching_history 表保留较早教学轮次、检查点和目标观察。
+- `data/workbench/records.sqlite3`：tasks 表保存任务 JSON；teaching_history 表保留较早教学轮次、检查点和目标观察；strategy_versions、teaching_sessions、teaching_events 保存策略定义与版本关联证据。
 - `data/workbench/<UUID>/project/`：真实项目文件，不是数据库内虚拟代码。不要删除组员本机 data 来修功能。
 - 任务内保留最近20轮教学、40个检查点、每目标20条观察；模型上下文进一步缩短。完整聊天与代码改动仍在任务 JSON，长期规模扩展尚未解决。
 - 同一进程每任务独立锁，不是支持多进程的数据库并发设计；文件和 SQLite 也没有跨资源事务。

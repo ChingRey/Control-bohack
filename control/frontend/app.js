@@ -4,8 +4,8 @@ async function api(path,body){if(body&&task&&path.includes('/tasks/'+task.id+'/'
 function lines(){$('lines').textContent=$('code').value.split('\n').map((_,i)=>i+1).join('\n')}
 function openFile(name){if($('code').value!==saved&&!confirm('当前文件尚未保存，放弃修改并切换？'))return;file=name;saved=task.files[file];$('code').value=saved;$('filename').textContent=file;lines();renderFiles()}
 function renderFiles(){$('files').replaceChildren();Object.keys(task.files).forEach(name=>{const b=document.createElement('button');b.className=name===file?'active':'';const icon=document.createElement('em');icon.textContent=name.endsWith('.js')?'JS':name.endsWith('.css')?'#':'<>';b.append(icon,document.createTextNode(name));b.onclick=()=>openFile(name);$('files').append(b)})}
-function render(){renderFiles();saved=task.files[file];$('code').value=saved;lines();$('filename').textContent=file;renderDevelopmentPlan();$('changes').textContent=task.changes.length?'已保存 '+task.changes.length+' 次代码修改':'尚无代码修改';renderChats();$('checks').textContent=task.checks.map(c=>(c.pass?'✓ ':'○ ')+c.name).join('\n');$('run').disabled=busy||!task.plan.length||task.step>=task.plan.length;renderTeacherStatus();if(previewTaskId&&previewTaskId!==task.id){runtimeObservations=[];previewTaskId=null;$('runtime-frame').src='about:blank';if(!$('runtime-panel').hidden)loadPreview()}$('connection').textContent='本地后端已连接 · SQLite 已保存';localStorage.setItem('control-workbench-task',task.id)}
-function setBusy(value){busy=value;document.querySelectorAll('form button,#run,#save,#review-teaching,#evaluate-teaching,#verify,#plan-confirm,#restart-example,#knowledge-topics button').forEach(b=>b.disabled=value);if(!value&&task)$('run').disabled=!task.plan.length||task.step>=task.plan.length}
+function render(){renderFiles();saved=task.files[file];$('code').value=saved;lines();$('filename').textContent=file;$('task-title').textContent=task.title||'待办清单';renderDevelopmentPlan();$('changes').textContent=task.changes.length?'已保存 '+task.changes.length+' 次代码修改':'尚无代码修改';renderChats();$('checks').textContent=task.checks.map(c=>(c.pass?'✓ ':'○ ')+c.name).join('\n');$('run').disabled=busy||!task.plan.length||task.step>=task.plan.length;renderTeacherStatus();if(previewTaskId&&previewTaskId!==task.id){runtimeObservations=[];previewTaskId=null;$('runtime-frame').src='about:blank';if(!$('runtime-panel').hidden)loadPreview()}$('connection').textContent='本地后端已连接 · SQLite 已保存';localStorage.setItem('control-workbench-task',task.id)}
+function setBusy(value){busy=value;document.querySelectorAll('form button,#run,#save,#review-teaching,#evaluate-teaching,#verify,#plan-confirm,#restart-example,#teaching-example,#knowledge-topics button').forEach(b=>b.disabled=value);if(!value&&task)$('run').disabled=!task.plan.length||task.step>=task.plan.length}
 async function waitForTeacher(){
  while(['queued','running'].includes(task.teaching_run?.status)){
   await new Promise(r=>setTimeout(r,900));
@@ -35,17 +35,29 @@ function renderTeacherStatus(){
  $('course-overview').textContent=course?('本教程：'+course.title+'\n当前目标：'+(task.teaching?.plan?.goal||'先了解你的判断')+'\n接着上次：'+(course.resume_note||'从当前项目开始审查')):'本项目持续教学 · 刷新后接着学';
  $('transfer-submit').hidden=!task.teaching?.pending_transfer;
  const plan=task.teaching?.plan||{};const turns=task.teaching?.turns||[];const last=turns[turns.length-1];
- $('teacher-plan').textContent='目标：'+(plan.goal||'等待教师安排')+'\n依据：'+(plan.reason||'暂无')+'\n下一步：'+(plan.next_step||'暂无')+'\n待解决：'+(plan.open_questions||[]).join('；')+'\n状态：'+(task.teaching?.assessment||'未检查')+'（候选掌握仍待复核）\n本轮使用工具：'+(last?.tools||[]).map(x=>x.name+' '+JSON.stringify(x.arguments)).join('；')+'\n证据校验：'+((last?.result?.validation_warnings||[]).join('；')||'暂无警告');
- document.querySelector('.badge').textContent='Coding 示例 / Teaching '+(real?'模型':'示例');
- document.querySelector('footer > span:last-child').textContent='真实文件与记录 · Coding 固定示例 · 教学结论待验证 · 升级仅预留接口';
+ const review=$('teacher-plan');review.replaceChildren();
+ const addReview=(label,value,kind='')=>{const row=document.createElement('div');row.className='review-line '+kind;const title=document.createElement('span');title.textContent=label;const content=document.createElement('p');content.textContent=value;row.append(title,content);review.append(row)};
+ addReview('本轮目标',plan.goal||'等待教师根据当前项目安排');
+ addReview('下一步',plan.next_step||'先描述你的观察或提出需要审查的内容','next');
+ const questions=plan.open_questions||[];addReview('待验证',questions.length?questions.join('；'):'尚无额外待验证项','pending');
+ const evidence=document.createElement('details');evidence.className='review-evidence';const summary=document.createElement('summary');summary.textContent='查看审查依据';const body=document.createElement('div');const warnings=last?.result?.validation_warnings||[];body.textContent=(plan.reason?'依据：'+plan.reason+'\n':'')+'掌握状态：'+(task.teaching?.assessment||'未检查')+'（候选掌握仍待复核）\n'+(warnings.length?'校验提醒：'+warnings.join('；'):'当前没有引用校验提醒')+'\n本轮仅使用只读材料，不代表已执行测试。';evidence.append(summary,body);review.append(evidence);
+ const settings=$('settings');
+ settings.textContent=real?'已连接 · '+(task.teaching_provider?.model||'模型'):'连接模型';
+ settings.classList.toggle('connected',real);
+ settings.title=real?'Teaching Agent 已连接；点击可更换模型或配置':'连接 Teaching Agent 使用的模型';
+  document.querySelector('footer > span:last-child').textContent='真实文件与记录 · Coding 固定示例 · 学习记录保存在本地';
  const phases={observe:'观察现象',explain:'解释原因',propose:'提出改法',verify:'设计验证',transfer:'迁移检查'};
  const phase=phases[task.teaching?.phase]||'观察现象';
  document.querySelector('.teacher-context').textContent='当前学习重点：'+(task.teaching?.plan?.goal||phase);
+ const record=$('learning-record');
+ if(record)record.textContent='当前掌握状态：'+(task.teaching?.assessment||'未检查')+'\n已记录 '+(task.teaching?.turns?.length||0)+' 轮教学反馈、'+task.changes.length+' 次代码修改。';
+ const learningSummary=$('learning-summary');
+ if(learningSummary)learningSummary.textContent=(task.teaching?.plan?.goal||'查看本项目的目标、证据与技术选学')+' · '+(task.teaching?.assessment||'未检查');
 }
 
-$('settings').onclick=()=>$('settings-dialog').showModal();
+$('settings').onclick=()=>{const provider=task?.teaching_provider||{};$('endpoint').value=provider.endpoint||'https://api.deepseek.com/chat/completions';$('model-choice').value=provider.mode==='model'?provider.model:'deepseek-flash';$('settings-dialog').showModal()};
 $('close-settings').onclick=()=>{$('api-key').value='';$('settings-dialog').close()};
-$('connect-teacher').onclick=async()=>{try{await api('/settings/teaching',{api_key:$('api-key').value,model:$('model-choice').value});$('api-key').value='';$('settings-dialog').close();task=await api('/tasks/'+task.id);render();toast('配置已保存，可点击审查代码开始真实教学')}catch(e){toast(e.message)}};
+$('connect-teacher').onclick=async()=>{try{await api('/settings/teaching',{api_key:$('api-key').value,model:$('model-choice').value,endpoint:$('endpoint').value});$('api-key').value='';$('settings-dialog').close();task=await api('/tasks/'+task.id);render();toast('模型已连接，可点击审查代码开始真实教学')}catch(e){toast(e.message)}};
 
 $('review-teaching').onclick=()=>perform(()=>api('/tasks/'+task.id+'/teaching/review',{}));
 $('evaluate-teaching').onclick=()=>perform(()=>api('/tasks/'+task.id+'/evaluate',{}));
@@ -85,17 +97,18 @@ function renderChats(){
 function splitParagraph(text){const sentences=text.match(/[^。！？]+[。！？]?[”’」』]?/g)||[text];const groups=[];let chunk='';for(const sentence of sentences){chunk+=sentence;if(chunk.length>=75){groups.push(chunk);chunk=''}}if(chunk)groups.push(chunk);return groups.join('\n')}
 
 const layoutRoot=document.querySelector('.workspace');
-let layout={files:160,plan:220,teacher:420,codeRatio:54};
+const filePanel=document.querySelector('.files');const fileLabel=filePanel?.querySelector('.label');
+if(filePanel&&fileLabel){const sidebarToggle=document.createElement('button');sidebarToggle.type='button';sidebarToggle.className='sidebar-toggle';sidebarToggle.title='收起工作区';sidebarToggle.textContent='‹';fileLabel.append(sidebarToggle);const applySidebar=()=>{const collapsed=localStorage.getItem('control-sidebar-collapsed')==='true';document.body.classList.toggle('sidebar-collapsed',collapsed);sidebarToggle.textContent=collapsed?'›':'‹';sidebarToggle.title=collapsed?'展开工作区':'收起工作区';fileLabel.firstChild.textContent=collapsed?'☰':'工作区 '};applySidebar();sidebarToggle.onclick=()=>{localStorage.setItem('control-sidebar-collapsed',String(!document.body.classList.contains('sidebar-collapsed')));applySidebar()}}
+let layout={teacher:390,codeRatio:54};
 try{layout={...layout,...JSON.parse(localStorage.getItem('control-layout')||'{}')}}catch{}
-function applyLayout(){const width=Math.max(960,layoutRoot.clientWidth);layout.files=Math.max(120,Math.min(layout.files,width*.18));layout.plan=Math.max(160,Math.min(layout.plan,width*.23));layout.teacher=Math.max(300,Math.min(layout.teacher,width-layout.files-layout.plan-278));layoutRoot.style.setProperty('--files',layout.files+'px');layoutRoot.style.setProperty('--plan',layout.plan+'px');layoutRoot.style.setProperty('--teacher',layout.teacher+'px');layoutRoot.style.setProperty('--code-ratio',layout.codeRatio+'fr');layoutRoot.style.setProperty('--chat-ratio',(100-layout.codeRatio)+'fr')}
+function applyLayout(){layout.teacher=Math.max(300,Math.min(620,Number(layout.teacher)||390));layout.codeRatio=Math.max(30,Math.min(70,Number(layout.codeRatio)||54));layoutRoot.style.setProperty('--teacher',layout.teacher+'px');layoutRoot.style.setProperty('--code-ratio',layout.codeRatio+'fr');layoutRoot.style.setProperty('--chat-ratio',(100-layout.codeRatio)+'fr')}
 function persistLayout(){localStorage.setItem('control-layout',JSON.stringify(layout))}
 document.querySelectorAll('.splitter').forEach(handle=>{
- const adjust=(delta)=>{const split=handle.dataset.split;if(split==='vertical'){layout.codeRatio=Math.max(25,Math.min(75,layout.codeRatio+delta));}else{const key=['files','plan','teacher'][Number(split)];layout[key]+=(split==='2'?-delta:delta);}applyLayout()};
- handle.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();handle.setPointerCapture(e.pointerId);let last=e.clientX,lastY=e.clientY;document.body.classList.add('resizing');handle.onpointermove=event=>{if(!handle.hasPointerCapture(event.pointerId))return;adjust(handle.dataset.split==='vertical'?(event.clientY-lastY)/document.querySelector('.center').clientHeight*100:event.clientX-last);last=event.clientX;lastY=event.clientY};const stop=()=>{document.body.classList.remove('resizing');handle.onpointermove=null;persistLayout()};handle.onpointerup=stop;handle.onlostpointercapture=stop;};
- handle.onkeydown=e=>{const vertical=handle.dataset.split==='vertical';const minus=vertical?'ArrowUp':'ArrowLeft',plus=vertical?'ArrowDown':'ArrowRight';if(e.key===minus||e.key===plus){e.preventDefault();adjust((e.key===plus?1:-1)*(vertical?3:20));persistLayout()}};
+ const adjust=(delta)=>{if(handle.dataset.split==='height')layout.codeRatio+=delta;else layout.teacher-=delta;applyLayout()};
+ handle.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();handle.setPointerCapture(e.pointerId);let lastX=e.clientX,lastY=e.clientY;document.body.classList.add('resizing');handle.onpointermove=event=>{if(!handle.hasPointerCapture(event.pointerId))return;if(handle.dataset.split==='height'){const height=document.querySelector('.center').clientHeight;adjust((lastY-event.clientY)/height*100);lastY=event.clientY}else{adjust(event.clientX-lastX);lastX=event.clientX}};const stop=()=>{document.body.classList.remove('resizing');handle.onpointermove=null;persistLayout()};handle.onpointerup=stop;handle.onlostpointercapture=stop;};
+ handle.onkeydown=e=>{const height=handle.dataset.split==='height';const minus=height?'ArrowUp':'ArrowLeft',plus=height?'ArrowDown':'ArrowRight';if(e.key===minus||e.key===plus){e.preventDefault();adjust((e.key===plus?1:-1)*(height?3:20));persistLayout()}};
 });
-$('reset-layout').onclick=()=>{layout={files:160,plan:220,teacher:420,codeRatio:54};applyLayout();persistLayout()};window.addEventListener('resize',applyLayout);applyLayout();
-
+$('open-settings').onclick=()=>$('settings').click();window.addEventListener('resize',applyLayout);applyLayout();
 function renderDevelopmentPlan(){
  const confirmed=task.plan.length>0,draft=task.plan_draft||[];$('steps').replaceChildren();
  const steps=confirmed?task.plan:['设置计划'];steps.forEach((text,i)=>{const li=document.createElement('li');li.className=confirmed&&i<task.step?'done':i===task.step?'current':'';const n=document.createElement('strong');n.textContent=confirmed&&i<task.step?'✓':i+1;const body=document.createElement('div');body.textContent=text;const note=document.createElement('small');note.textContent=!confirmed?(draft.length?'草稿已提出，与教师梳理后确认':'先交流目标，再拆分实现步骤'):i<task.step?'已执行，等待审查':i===task.step?'下一步，等待确认':'尚未开始';body.append(note);li.append(n,body);if(!confirmed){li.tabIndex=0;li.style.cursor='pointer';li.onclick=()=>{$('coding-input').focus();if(!draft.length&&!$('coding-input').value)$('coding-input').placeholder='例如：我想做一个可以记录待办、标记完成的网页';else if(draft.length)$('teaching-input').focus()}}$('steps').append(li)});
@@ -103,6 +116,7 @@ function renderDevelopmentPlan(){
 }
 $('plan-confirm').onclick=()=>{confirmMode='plan';$('confirm').querySelector('p').textContent='先与教师讨论整体目标和拆分。确认后只保存计划，不执行代码。';$('confirm-run').textContent='确认计划';$('confirm').querySelector('h2').textContent='编辑并确认开发计划（每行一步）';$('instruction').value=(task.plan_draft||[]).join('\n');$('confirm').showModal()};
 $('restart-example').onclick=()=>{if(confirm('从设置计划开始一个新的示例？当前记录会保留，不会删除。'))perform(()=>api('/tasks',{}))};
+$('teaching-example').onclick=()=>{if(confirm('创建独立的空白输入审查教学示例？当前项目及记录会保留。'))perform(()=>api('/tasks',{scenario:'teaching'}))};
 function renderKnowledge(){
  const course=task.teaching?.course||{},prefs=course.knowledge_preferences||{};const el=$('knowledge-topics');el.replaceChildren();
  const topics=task.knowledge_topics||{};
@@ -119,6 +133,9 @@ function drawMap(){
  branches.forEach((branch,i)=>{const y=65+i*200,color=colors[i%4];svg.append(svgElement('path',{d:`M259 ${mid} C300 ${mid},300 ${y+30},340 ${y+30}`,fill:'none',stroke:color,'stroke-width':2.5}));card(340,y,220,60,branch.label,color);const children=branch.children||[];children.slice(0,4).forEach((child,j)=>{const yy=y-20+j*48;svg.append(svgElement('path',{d:`M560 ${y+30} C610 ${y+30},610 ${yy+20},650 ${yy+20}`,fill:'none',stroke:color,'stroke-width':1.4,opacity:.7}));card(650,yy,380,40,child.label,color)})});host.append(svg);
 }
 $('open-map').onclick=()=>{mapScale=1;drawMap();$('map-dialog').showModal()};$('map-close').onclick=()=>$('map-dialog').close();$('map-in').onclick=()=>{mapScale=Math.min(2,mapScale+.2);drawMap()};$('map-out').onclick=()=>{mapScale=Math.max(.6,mapScale-.2);drawMap()};$('map-fit').onclick=()=>{mapScale=1;drawMap()};$('map-ask').onclick=()=>{$('map-dialog').close();$('teaching-input').value='请根据我们当前项目、计划与讨论，用思维导图梳理整体目标、实现拆分和相关技术。标明待讨论与已确认，不直接给修复答案。';$('teaching-input').focus()};
+$('open-learning').onclick=()=>$('learning-dialog').showModal();$('close-learning').onclick=()=>$('learning-dialog').close();
+const reviewCard=document.querySelector('.review-card');const reviewTitle=document.querySelector('.review-title');
+if(reviewCard&&reviewTitle){reviewCard.classList.add('collapsed');const toggleButton=document.createElement('button');toggleButton.type='button';toggleButton.className='review-toggle';toggleButton.textContent='查看审查';toggleButton.setAttribute('aria-expanded','false');reviewTitle.insertBefore(toggleButton,$('review-teaching'));const toggleReview=()=>{const collapsed=reviewCard.classList.toggle('collapsed');toggleButton.textContent=collapsed?'查看审查':'收起审查';toggleButton.setAttribute('aria-expanded',String(!collapsed))};toggleButton.onclick=toggleReview}
 
 let runtimeObservations=[],previewTaskId=null;
 function showView(view){const runtime=view==='runtime';document.querySelector('.code-area').hidden=runtime;$('runtime-panel').hidden=!runtime;$('code-view').classList.toggle('view-active',!runtime);$('runtime-view').classList.toggle('view-active',runtime);$('filename').hidden=runtime;if(runtime)loadPreview()}
