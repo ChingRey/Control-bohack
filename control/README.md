@@ -96,3 +96,7 @@ control/
 OpenAI使用官方Responses API，记忆摘要也使用同一服务商；不需要登录Codex或读取Codex凭据。此接入只切换Teaching模型，Coding依然是固定示例。提供商URL固定，密钥不写入数据库或浏览器持久化。
 
 当前共53项自动测试；OpenAI网络部分使用模拟响应验证，真实账户调用需本机填写密钥后验证。详见[OpenAI接入说明](docs/OPENAI_SETUP.md)。
+
+## OpenCode 本机运行
+
+Windows 安装、千问 DashScope 配置与首次调用步骤见 [docs/OPENCODE_LOCAL_SETUP.md](docs/OPENCODE_LOCAL_SETUP.md)。

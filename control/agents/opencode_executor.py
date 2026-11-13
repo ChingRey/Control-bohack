@@ -2,13 +2,20 @@
 import json, os, re, shutil, subprocess, tempfile, uuid
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 CONFIG = None
 ROOT = Path(__file__).resolve().parents[1]
 
 def binary():
-    local=ROOT/'tools/opencode-next/node_modules/opencode-windows-x64/bin/opencode.exe'
-    return str(local) if local.exists() else shutil.which('opencode')
+    candidates=(
+        ROOT/'tools/opencode-next/node_modules/opencode-ai/bin/opencode.exe',
+        ROOT/'tools/opencode-next/node_modules/opencode-windows-x64/bin/opencode.exe',
+        ROOT/'tools/opencode-next/node_modules/opencode-windows-x64-baseline/bin/opencode.exe',
+    )
+    for local in candidates:
+        if local.is_file():return str(local)
+    return shutil.which('opencode')
 
 def configure(key,model,region):
     global CONFIG
@@ -17,6 +24,17 @@ def configure(key,model,region):
     urls={'cn':'https://dashscope.aliyuncs.com/compatible-mode/v1','intl':'https://dashscope-intl.aliyuncs.com/compatible-mode/v1'}
     if region not in urls:raise ValueError('地区无效')
     CONFIG={'key':key,'model':model,'url':urls[region]}
+
+def coding_proxy():
+    value=os.environ.get('CONTROL_CODING_HTTPS_PROXY','').strip()
+    if not value:return None
+    parsed=urlsplit(value)
+    if parsed.scheme not in ('http','https') or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise ValueError('CONTROL_CODING_HTTPS_PROXY 必须是无账号信息的 HTTP(S) 代理 URL')
+    try:
+        if parsed.port is not None and not 1<=parsed.port<=65535:raise ValueError
+    except ValueError:raise ValueError('CONTROL_CODING_HTTPS_PROXY 端口无效') from None
+    return value
 
 def metadata():
     return {'configured':CONFIG is not None,'installed':bool(binary()),'model':CONFIG['model'] if CONFIG else None}
@@ -42,6 +60,10 @@ def execute(files,payload,planning=False,chatting=False):
         env={k:v for k,v in os.environ.items() if k.upper() in ('PATH','SYSTEMROOT','WINDIR','TEMP','TMP','PATHEXT')}
         for key in ('HOME','USERPROFILE','XDG_CONFIG_HOME','XDG_DATA_HOME','XDG_CACHE_HOME'):env[key]=str(root/key)
         env['CONTROL_CODING_KEY']=cfg['key']
+        proxy=coding_proxy()
+        if proxy:
+            env['HTTP_PROXY']=proxy
+            env['HTTPS_PROXY']=proxy
         env['OPENCODE_DISABLE_PROJECT_CONFIG']='true'
         opencode_config={
             '$schema':'https://opencode.ai/config.json',
