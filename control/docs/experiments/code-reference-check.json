@@ -1,0 +1,35 @@
+{
+  "kind": "offline deterministic mechanism comparison, not model quality",
+  "cases": [
+    {
+      "case": "unchanged",
+      "expected_precise_jump": true,
+      "old_accepts": true,
+      "new_accepts": true
+    },
+    {
+      "case": "inserted_line",
+      "expected_precise_jump": false,
+      "old_accepts": true,
+      "new_accepts": false
+    },
+    {
+      "case": "changed_body",
+      "expected_precise_jump": false,
+      "old_accepts": true,
+      "new_accepts": false
+    },
+    {
+      "case": "deleted_line",
+      "expected_precise_jump": false,
+      "old_accepts": false,
+      "new_accepts": false
+    }
+  ],
+  "old_wrong_accepts": 2,
+  "new_wrong_accepts": 0,
+  "extra_checks": [
+    "range end rejected",
+    "missing file rejected"
+  ]
+}

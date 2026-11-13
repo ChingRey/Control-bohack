@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "capabilities": [
+    {"id":"requirements","title":"明确需求与验收","criteria":"独立说清目标、范围和至少一条可检查的验收条件"},
+    {"id":"code-understanding","title":"理解代码与数据流","criteria":"根据真实代码解释执行顺序和关键状态"},
+    {"id":"diagnosis","title":"根据证据定位问题","criteria":"区分现象与假设，能寻找证据解释原因"},
+    {"id":"change-instruction","title":"组织修改要求","criteria":"给出与当前工程一致、具体且有理由的修改要求"},
+    {"id":"verification","title":"设计验证与迁移","criteria":"独立提出正常、边界及相关功能检查，并在新情境运用"}
+  ],
+  "skills": [
+    {"id":"brainstorming","title":"需求澄清与方案讨论","source":"https://github.com/obra/superpowers/tree/main/skills/brainstorming","requires":["requirements","verification"],"validation_status":"not_evaluated","installed":false},
+    {"id":"systematic-debugging","title":"系统调试","source":"https://github.com/obra/superpowers/tree/main/skills/systematic-debugging","requires":["code-understanding","diagnosis","change-instruction","verification"],"validation_status":"not_evaluated","installed":false},
+    {"id":"verification-before-completion","title":"完成前验证","source":"https://github.com/obra/superpowers/tree/main/skills/verification-before-completion","requires":["verification","change-instruction"],"validation_status":"not_evaluated","installed":false}
+  ]
+}

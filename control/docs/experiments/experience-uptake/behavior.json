@@ -1,0 +1,49 @@
+{
+  "environment": "Node VM with minimal DOM and localStorage stubs, not real browser",
+  "results": [
+    {
+      "trial": 1,
+      "experience_enabled": false,
+      "increment_restore_reset": true,
+      "actual_reads": [
+        "counter_value"
+      ],
+      "actual_writes": [
+        "counter_value"
+      ]
+    },
+    {
+      "trial": 2,
+      "experience_enabled": true,
+      "increment_restore_reset": true,
+      "actual_reads": [
+        "classroom-counter-v1"
+      ],
+      "actual_writes": [
+        "classroom-counter-v1"
+      ]
+    },
+    {
+      "trial": 3,
+      "experience_enabled": true,
+      "increment_restore_reset": true,
+      "actual_reads": [
+        "classroom-counter-v1"
+      ],
+      "actual_writes": [
+        "classroom-counter-v1"
+      ]
+    },
+    {
+      "trial": 4,
+      "experience_enabled": false,
+      "increment_restore_reset": true,
+      "actual_reads": [
+        "counter-value"
+      ],
+      "actual_writes": [
+        "counter-value"
+      ]
+    }
+  ]
+}

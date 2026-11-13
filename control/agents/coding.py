@@ -10,7 +10,7 @@ FILES = {
 class SampleCodingAgent:
  def __init__(self,project,write_project_file):
   self.project=project;self.write_project_file=write_project_file
- def step(self, t, instruction):
+ def step(self, t, instruction, learning_context=None):
   n=t['step']; path=self.project(t['id'])/'app.js'; before=path.read_text(encoding='utf-8')
   if n == 0:
    after=before+'\n// 需求检查点：本示例将空白输入列为待审查边界。\n'

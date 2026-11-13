@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+data/workbench/
+dist/
+.env
+.env.*
+!.env.example
+
+.venv-memory/
+data/backups/
+
+.venv-coding/
+tools/opencode/node_modules/
+
+tools/opencode-next/node_modules/
+
+data/coding-runs/

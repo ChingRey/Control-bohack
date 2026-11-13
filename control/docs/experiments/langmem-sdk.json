@@ -1,0 +1,30 @@
+{
+  "sdk": "langmem==0.0.30",
+  "mode": "SDK mechanics with fixture model, not real LLM",
+  "cases": [
+    {
+      "summary_threshold": 4000,
+      "output_budget": 1200,
+      "model_calls": 1,
+      "early_message_marked_summarized": true,
+      "early_message_actually_supplied_to_summarizer": false,
+      "current_prompt_retained": true,
+      "output_approx_tokens": 961
+    },
+    {
+      "summary_threshold": 1200,
+      "output_budget": 4000,
+      "model_calls": 1,
+      "early_message_marked_summarized": true,
+      "early_message_actually_supplied_to_summarizer": false,
+      "current_prompt_retained": true,
+      "output_approx_tokens": 3897
+    }
+  ],
+  "incremental": {
+    "mode": "incremental_batches_of_8",
+    "early_message_actually_supplied_to_summarizer": true,
+    "current_prompt_retained": true
+  },
+  "conclusion": "一次性输入大量积压历史时，本例最早消息可能在摘要前被裁掉；增量分批例保留了最早原文。不能仅凭已整理ID集认定所有原文都被读过。"
+}

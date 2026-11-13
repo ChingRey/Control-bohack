@@ -4,11 +4,11 @@ import json
 import os
 import re
 import time
+from . import memory, learning, providers
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import urlopen
 
 PHASES = ['observe', 'explain', 'propose', 'verify', 'transfer']
 LESSON = {
@@ -50,6 +50,7 @@ def state(t):
   'resume_note':'从当前项目和学生已有判断接着教，不重新开课。','checkpoints':[]})
  s['course'].setdefault('knowledge_preferences',{})
  s['course'].setdefault('selected_knowledge',None)
+ memory.state(t);learning.state(t)
  return s
 
 def context(t, action):
@@ -59,28 +60,34 @@ def context(t, action):
  # One bounded tutorial project, never arbitrary workspace files.
  loaded=['diagnose','socratic-review','explain']
  if action=='evaluate' or s['phase']=='transfer': loaded.append('assess-summarize')
- students=[{'id':i,'content':m['content'],'channel':m['channel']} for i,m in enumerate(t['messages']) if m['role']=='user']
- remembered={i for g in s['course']['objectives'] for i in g['evidence_ids'][-5:]}
- selected={m['id']:m for m in students[-80:]}
- selected.update({m['id']:m for m in students if m['id'] in remembered})
+ remembered=[i for g in s['course']['objectives'] for i in g['evidence_ids'][-3:]]
+ if s.get('transfer_answer'):remembered.append(s['transfer_answer']['message_id'])
+ selected,focus=memory.select_messages(t,remembered)
  course_view={**s['course'],'checkpoints':s['course']['checkpoints'][-8:],
   'objectives':[{**g,'observations':g['observations'][-5:],'evidence_ids':g['evidence_ids'][-10:]} for g in s['course']['objectives']]}
- return {'action':action,'lesson':LESSON,'phase':s['phase'],'hint_level':s['hint_level'],
+ ctx={'action':action,'lesson':LESSON,'phase':s['phase'],'hint_level':s['hint_level'],
   'plan':t['plan'],'plan_draft':t.get('plan_draft',[]),'plan_confirmed':bool(t['plan']),'step':t['step'],
   'project_purpose':'待办网页：用户添加事项、标记完成，并讨论输入限制和数据保留。',
   'knowledge_map':KNOWLEDGE,
   'files':{k:[{'line':i+1,'text':line} for i,line in enumerate(v.splitlines())] for k,v in files.items()},
-  'code_hash':code_hash,'changes':t['changes'][-2:], 'checks':t['checks'],
+  'code_hash':code_hash,'changes':[{'file':c.get('file'),'instruction':c.get('instruction','')[:600],'note':'前后源码保留在数据库，本轮使用当前源码'} for c in t['changes'][-2:]], 'checks':t['checks'],
   'check_type':'source_markers_only_not_behavioral',
   'runtime_observations':t.get('runtime_observations',[]),
-  'messages':[{'id':i,**m} for i,m in enumerate(t['messages'])][-50:],
-  'student_evidence':list(selected.values()),
+  'messages':selected,'current_focus':focus,
+  'student_evidence':[{'id':m['id'],'channel':m['channel'],'role':'user','content_location':'messages'} for m in selected if m['role']=='user'],
   'loaded_skills':{name:dispatch_tool('read_teaching_skill',{'name':name},{})['content'] for name in loaded},
   'transfer_question':LESSON['transfer_question'] if s['phase']=='transfer' else None,
   'transfer_answer':s['transfer_answer'],'pending_transfer':s.get('pending_transfer'),
-  'teaching_plan':s.get('plan',{}),'recent_teaching':s['turns'][-6:],
+  'teaching_plan':s.get('plan',{}),'recent_teaching':[{'id':r['id'],'action':r.get('action'),'code_hash':r.get('code_hash')} for r in s['turns'][-3:]],
   'course':course_view,'project_change':{'code_changed':s['course'].get('last_code_hash')!=code_hash,'current_step':t['step']},
-  'skills_available':SKILLS}
+  'skills_available':SKILLS,'learning_memory':memory.view(t,{m['id'] for m in selected}),
+  'learner_profile':[{**{k:v for k,v in row.items() if k!='recent_observations'},'recent_observations':[{k:o[k] for k in ('level','explanation','evidence_ids','code_hash')} for o in row['recent_observations']]} for row in learning.profile(t)],'coding_skill_catalog':learning.CATALOG,
+  'confirmed_experiences':learning.coding_packet(t,(next((m['content'] for m in selected if m['id']==focus['coding_prompt_id']),'')))['rules']}
+ if memory.size(ctx)>memory.MAX_CONTEXT_CHARS:
+  raise ValueError('本轮教学材料超过80000个JSON字符，请缩小代码范围；原始记录已保留')
+ ctx['context_usage']={'json_characters':memory.size(ctx),'limit_characters':memory.MAX_CONTEXT_CHARS,
+  'counter':'characters_not_tokens','loaded_message_ids':[m['id'] for m in selected]}
+ return ctx
 
 def validate(output, ctx):
  if not isinstance(output,dict): raise ValueError('教师输出不是对象')
@@ -90,7 +97,8 @@ def validate(output, ctx):
  if output.get('teaching_action') not in ACTIONS: raise ValueError('教学动作不合法')
  plan=output.get('plan')
  if not isinstance(plan,dict) or any(not isinstance(plan.get(k),str) or not plan[k].strip() for k in ('goal','reason','next_step')): raise ValueError('缺少教学目标、理由或下一步安排')
- if not isinstance(plan.get('open_questions'),list) or any(not isinstance(q,str) for q in plan['open_questions']): raise ValueError('待解决问题格式错误')
+ if any(len(plan[k])>500 for k in ('goal','reason','next_step')):raise ValueError('教学安排过长')
+ if not isinstance(plan.get('open_questions'),list) or len(plan['open_questions'])>5 or any(not isinstance(q,str) or len(q)>300 for q in plan['open_questions']): raise ValueError('待解决问题格式错误')
  if not isinstance(output.get('transfer_question',''),str): raise ValueError('迁移题格式错误')
  if output['teaching_action']=='ask_transfer' and not output.get('transfer_question','').strip(): raise ValueError('未提供迁移题')
  if type(output.get('hint_level')) is not int or not 0<=output['hint_level']<=3: raise ValueError('提示级别错误')
@@ -123,6 +131,14 @@ def validate(output, ctx):
   if not isinstance(update,dict) or any(not isinstance(update.get(k),str) or not update[k].strip() or len(update[k])>1500 for k in ('summary','resume_note')): raise ValueError('教程接续记录格式错误')
   ids=update.get('addressed_objective_ids',[])
   if not isinstance(ids,list) or any(not isinstance(i,str) or i not in [g['id'] for g in COURSE_OBJECTIVES] for i in ids): raise ValueError('教程目标不存在')
+ if output.get('learning_update') is not None:
+  if output.get('validation_warnings'):
+   output['learning_update']={}
+  else:
+   try:learning.validate(output['learning_update'],ctx)
+   except ValueError as err:
+    output['learning_update']={}
+    output.setdefault('validation_warnings',[]).append('学习记录未采纳：'+str(err))
  diagram=output.get('mindmap')
  if diagram is not None:
   if not isinstance(diagram,dict) or not isinstance(diagram.get('title'),str) or not 1<=len(diagram['title'])<=30: raise ValueError('思维导图标题不合法')
@@ -134,12 +150,23 @@ def validate(output, ctx):
  return output
 
 class TeachingAgent:
+ def __init__(self):
+  self.config=providers.settings()
+  self.selected_mode=os.getenv('TEACHING_MODE','model' if self.config['key'] else 'sample')
+ def summarize_memory(self,rows):
+  req=providers.request(self.config,[{'role':'system','content':(ASSETS/'memory.md').read_text(encoding='utf-8')},
+   {'role':'user','content':json.dumps({'source_messages':rows},ensure_ascii=False)}],1100,json_mode=True)
+  try:
+   response=providers.normalize(self.config,request_model(req,self.request_budget,self.progress))
+   self.usage=getattr(self,'usage',[])+[response.get('usage',{})]
+   value=json.loads(response['choices'][0]['message']['content'])
+   if set(value)!={'summary'}:raise ValueError('记忆只允许返回summary')
+   return value['summary']
+  except HTTPError as err:raise ValueError(f'历史整理请求返回HTTP {err.code}，请检查服务与权限；旧记忆和原话保留') from None
+  except (OSError,ValueError,KeyError,TypeError,IndexError):raise ValueError('历史整理失败，旧记忆和原话保留，可重试') from None
  @property
- def mode(self): return os.getenv('TEACHING_MODE', 'model' if os.getenv('DEEPSEEK_API_KEY') else 'sample')
- def metadata(self):
-  if self.mode!='model': return {'mode':'sample','model':'scripted-demo'}
-  endpoint=os.getenv('TEACHING_ENDPOINT','https://api.deepseek.com/chat/completions')
-  return {'mode':'model','model':os.getenv('TEACHING_MODEL','deepseek-flash'),'endpoint':endpoint}
+ def mode(self):return self.selected_mode
+ def metadata(self):return providers.metadata(self.config,self.mode)
  def respond(self, ctx, progress=None):
   progress=progress or (lambda *a:None)
   if self.mode=='sample':
@@ -157,28 +184,17 @@ class TeachingAgent:
     'hint_level':ctx['hint_level'],'assessment':'insufficient','student_evidence_ids':[],
     'citations':[],'source_ids':[],'issue_kind':'none','upgrade_suggestion':'',
     'teaching_action':'ask','plan':{'goal':LESSON['goal'],'reason':'离线演示，不推断学生掌握程度','next_step':'请学生观察实际行为','open_questions':[]},'transfer_question':''}
-  endpoint=os.getenv('TEACHING_ENDPOINT','https://api.deepseek.com/chat/completions')
-  model=os.getenv('TEACHING_MODEL','deepseek-flash')
-  key=os.getenv('TEACHING_API_KEY') or os.getenv('DEEPSEEK_API_KEY','')
-  u=urlparse(endpoint)
-  if not model or not u.hostname or (u.scheme!='https' and not(u.scheme=='http' and u.hostname in ('127.0.0.1','localhost'))):
-   raise ValueError('模型地址或名称未正确配置')
-  if u.hostname=='api.deepseek.com' and not key: raise ValueError('未配置 DEEPSEEK_API_KEY；请使用本机 DeepSeek 启动入口')
   messages=[{'role':'system','content':SYSTEM},{'role':'user','content':json.dumps(ctx,ensure_ascii=False)}]
   self.tool_trace=[]
   repaired=False
-  budget={'attempts':0,'deadline':time.monotonic()+120}
+  budget=getattr(self,'request_budget',{'attempts':0,'deadline':time.monotonic()+120})
   for iteration in range(5):
    if budget['attempts']>=5: raise ValueError('本轮请求预算已用完，可稍后重试')
    progress('thinking','正在结合代码和你的回答组织教学回复')
-   payload={'model':model,'messages':messages,'max_tokens':2600}
-   if budget['attempts']<4: payload['tools']=tools()
-   if u.hostname=='api.deepseek.com':
-    payload['thinking']={'type':'disabled'}
-    if budget['attempts']==4: payload['response_format']={'type':'json_object'}
-   req=Request(endpoint,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json',**({'Authorization':'Bearer '+key} if key else {})})
+   req=providers.request(self.config,messages,2600,tools=tools() if budget['attempts']<4 else None,json_mode=budget['attempts']==4)
    try:
-    raw=request_model(req,budget,progress)
+    raw=providers.normalize(self.config,request_model(req,budget,progress))
+    self.usage=getattr(self,'usage',[])+[raw.get('usage',{})]
     msg=raw['choices'][0]['message']; calls=msg.get('tool_calls',[])
     if calls:
      if budget['attempts']>=5 or len(calls)>5: raise ValueError('教学工具调用超出本轮预算')
@@ -186,7 +202,7 @@ class TeachingAgent:
      for call in calls:
       name=call['function']['name']
       try:
-       args=json.loads(call['function']['arguments']); result=dispatch_tool(name,args,ctx)
+       args=json.loads(call['function']['arguments']); result=dispatch_tool(name,args,ctx,getattr(self,'history',None))
       except (ValueError,TypeError,KeyError) as e:
        result={'error':str(e)}; args={}
       progress('reading','正在读取教学方法或项目证据')
@@ -239,12 +255,26 @@ def tools():
   ('read_project_file','查看当前任务已保存源码的真实行号','path',['app.js','index.html','style.css']),
   ('read_reference','读取已核实知识原理及来源','id',[r['id'] for r in LESSON['sources']]),
   ('read_learning_record','查看整门教程和已有教学记录','section',['course','plan','turns','messages','checks'])]
- return [{'type':'function','function':{'name':name,'description':desc,'parameters':{
+ definitions_tool=[{'type':'function','function':{'name':name,'description':desc,'parameters':{
   'type':'object','properties':{arg:{'type':'string','enum':options}},'required':[arg],'additionalProperties':False}}}
   for name,desc,arg,options in definitions]
+ definitions_tool.append({'type':'function','function':{'name':'read_message_history','description':'按编号读取同一项目的原始旧消息，最多6条；预算外消息会明确列为未加载',
+  'parameters':{'type':'object','properties':{'start':{'type':'integer','minimum':0},'limit':{'type':'integer','minimum':1,'maximum':6}},'required':['start'],'additionalProperties':False}}})
+ return definitions_tool
 
-def dispatch_tool(name,args,ctx):
+def dispatch_tool(name,args,ctx,history=None):
  if not isinstance(args,dict): raise ValueError('工具参数必须为对象')
+ if name=='read_message_history':
+  start=args.get('start');limit=args.get('limit',4)
+  if history is None or type(start) is not int or type(limit) is not int or not 0<=start<len(history) or not 1<=limit<=6:raise ValueError('历史读取范围无效')
+  rows=[];omitted=[];used=0
+  for i in range(start,min(start+limit,len(history))):
+   row={'id':i,**history[i]};cost=memory.size(row)
+   if used+cost>12000:omitted.append(i);continue
+   rows.append(row);used+=cost
+   if row['role']=='user' and not any(x['id']==i for x in ctx['student_evidence']):ctx['student_evidence'].append(row)
+   if i not in ctx['context_usage']['loaded_message_ids']:ctx['context_usage']['loaded_message_ids'].append(i)
+  return {'messages':rows,'not_loaded_ids':omitted}
  if name=='read_teaching_skill':
   selected=args.get('name')
   if selected not in SKILLS: raise ValueError('未知教学Skill')
@@ -264,7 +294,10 @@ def dispatch_tool(name,args,ctx):
  raise ValueError('不允许该工具')
 
 def run(t, action='message', progress=None):
- s=state(t);ctx=context(t,action);agent=TeachingAgent()
+ s=state(t);agent=TeachingAgent();agent.history=t['messages'];agent.progress=progress or (lambda *a:None)
+ agent.request_budget={'attempts':0,'deadline':time.monotonic()+120}
+ if agent.mode=='model':memory.prepare(t,agent.summarize_memory,agent.progress)
+ ctx=context(t,action)
  turn_id=s.get('next_turn_id',max((r['id'] for r in s['turns']),default=-1)+1)
  output=validate(agent.respond(ctx,progress),ctx)
  s['phase']=output['next_phase'];s['hint_level']=max(s['hint_level'],output['hint_level'])
@@ -286,5 +319,9 @@ def run(t, action='message', progress=None):
   s['transfer_answer']=None
  s['turns'].append({'id':turn_id,'action':action,'code_hash':ctx['code_hash'],'loaded_skills':list(ctx['loaded_skills']),
   'provider':agent.metadata(),'phase_before':ctx['phase'],'tools':getattr(agent,'tool_trace',[]),'result':output})
+ learning.apply(t,output.get('learning_update',{}),turn_id,ctx['code_hash'])
+ s['memory']['revision']+=1
+ s['memory']['last_loaded_ids']=ctx['context_usage']['loaded_message_ids']
+ s['turns'][-1]['context_usage']=ctx['context_usage'];s['turns'][-1]['provider_usage']=getattr(agent,'usage',[]);s['turns'][-1]['request_attempts']=agent.request_budget['attempts']
  s['next_turn_id']=turn_id+1
  return output['reply']

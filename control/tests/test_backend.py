@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import tempfile
 import threading
 import unittest
@@ -189,5 +190,71 @@ class BackendTest(unittest.TestCase):
    self.assertTrue(finished.wait(1));time.sleep(.05)
   fresh=b.load(t['id']);self.assertEqual(fresh['teaching_run']['id'],'new-owner')
   self.assertFalse(any(m['content']=='old result' for m in fresh['messages']))
+
+ def test_learning_versions_are_atomic_and_reject_same_revision_replacement(self):
+  t=self.call('/tasks',{});b.save(t)
+  with b.connection() as c:
+   initial=c.execute('SELECT COUNT(*) FROM learning_versions WHERE task_id=?',(t['id'],)).fetchone()[0]
+  self.assertEqual(initial,1)
+  t['teaching']['course']['summary']='tampered without a new revision'
+  with self.assertRaises(ValueError):b.save(t)
+  self.assertNotEqual(b.load(t['id'])['teaching']['course']['summary'],t['teaching']['course']['summary'])
+
+ def test_learning_read_and_markdown_export_preserve_records(self):
+  t=self.call('/tasks',{});path='/tasks/'+t['id']
+  view=self.call(path+'/learning')
+  self.assertEqual(len(view['learning']['profile']),5)
+  self.assertTrue(all(not x['can_install'] for x in view['learning']['skills']))
+  with urlopen(self.base+'/api'+path+'/learning-record.md') as response:
+   self.assertIn('text/markdown',response.headers['Content-Type'])
+   self.assertIn('系统记录',response.read().decode('utf-8'))
+
+ def test_experience_actions_and_coding_input_log(self):
+  t=self.call('/tasks',{'scenario':'teaching'});path='/tasks/'+t['id']
+  with b.task_lock(t['id']):
+   t=b.load(t['id']);s=b.learning.state(t)
+   s['experiences'].append({'id':'card','status':'draft','revision':1,'title':'输入检查','kind':'method','when':'输入时','rule':'先检查输入','verification':'边界检查','limits':'示例','tags':['输入'],'evidence_ids':[]})
+   s['revision']+=1;b.save(t)
+  t=self.call(path+'/experiences/card/confirm',{'confirmed':True})
+  self.assertEqual(t['teaching']['learning']['experiences'][0]['status'],'confirmed')
+  t=self.call(path+'/steps/run',{'confirmed':True,'expected_step':2,'instruction':'输入检查'})
+  log=t['teaching']['learning']['coding_loads'][-1]
+  self.assertEqual(log['rule_versions'][0]['id'],'card');self.assertFalse(log['applied'])
+  t=self.call(path+'/experiences/card/disable',{'confirmed':True})
+  self.assertEqual(b.learning.coding_packet(t,'输入')['rules'],[])
+
+ def test_valid_memory_survives_later_model_failure(self):
+  t=self.call('/tasks',{});path='/tasks/'+t['id']
+  def partial(work,*args):
+   m=work['teaching']['memory'];m['revision']+=1;m['covered_through']=0
+   m['segments'].append({'id':0,'from_id':0,'to_id':0,'summary':'valid memory','source_digest':'test'})
+   raise ValueError('reply failed after compaction')
+  with patch.object(b.teaching,'run',side_effect=partial):
+   done=self.call(path+'/teaching/messages',{'message':'test'})
+  self.assertEqual(done['teaching_run']['status'],'failed')
+  self.assertEqual(done['teaching']['memory']['covered_through'],0)
+  self.assertEqual(done['messages'][-1]['content'],'test')
+  with b.connection() as c:
+   self.assertEqual(c.execute('SELECT COUNT(*) FROM learning_versions WHERE task_id=?',(t['id'],)).fetchone()[0],2)
+
+ def test_openai_settings_remain_in_process_and_do_not_leak(self):
+  with patch.dict(os.environ,{},clear=True):
+   configured=self.call('/settings/teaching',{'provider':'openai','api_key':'test-openai-secret','model':'gpt-test'})
+   self.assertEqual(configured['provider']['provider'],'openai')
+   task=self.call('/tasks',{})
+   self.assertEqual(task['teaching_provider']['protocol'],'responses')
+   self.assertNotIn('test-openai-secret',json.dumps(task));self.assertNotIn('test-openai-secret',json.dumps(configured))
+   self.assertNotIn('test-openai-secret',json.dumps(b.load(task['id'])))
+
+ def test_deepseek_settings_still_accept_old_request_shape(self):
+  with patch.dict(os.environ,{},clear=True):
+   configured=self.call('/settings/teaching',{'api_key':'test-key','model':'deepseek-flash'})
+   self.assertEqual(configured['provider']['provider'],'deepseek')
+
+ def test_workbench_listener_is_exclusive(self):
+  server=b.LocalHTTPServer(('127.0.0.1',0),b.Handler)
+  try:
+   with self.assertRaises(OSError):b.LocalHTTPServer(('127.0.0.1',server.server_port),b.Handler)
+  finally:server.server_close()
 
 if __name__=='__main__': unittest.main()

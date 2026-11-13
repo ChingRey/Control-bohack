@@ -1,0 +1,64 @@
+[
+  {
+    "task": "money",
+    "checks": [
+      {
+        "name": "empty",
+        "pass": true
+      },
+      {
+        "name": "decimal precision",
+        "pass": true
+      },
+      {
+        "name": "mixed total",
+        "pass": true
+      },
+      {
+        "name": "reject -1",
+        "pass": true
+      },
+      {
+        "name": "reject 1.234",
+        "pass": true
+      },
+      {
+        "name": "reject abc",
+        "pass": true
+      },
+      {
+        "name": "fractional quantity",
+        "pass": true
+      },
+      {
+        "name": "no mutation",
+        "pass": true
+      }
+    ]
+  },
+  {
+    "task": "todos",
+    "checks": [
+      {
+        "name": "trim",
+        "pass": true
+      },
+      {
+        "name": "blank reject",
+        "pass": true
+      },
+      {
+        "name": "stable IDs",
+        "pass": true
+      },
+      {
+        "name": "list isolation",
+        "pass": true
+      },
+      {
+        "name": "independent instances",
+        "pass": true
+      }
+    ]
+  }
+]

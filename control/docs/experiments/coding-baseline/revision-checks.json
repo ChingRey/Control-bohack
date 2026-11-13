@@ -1,0 +1,22 @@
+[
+  {
+    "name": "trim and blank regression",
+    "pass": true
+  },
+  {
+    "name": "ID regression",
+    "pass": true
+  },
+  {
+    "name": "snapshot isolation regression",
+    "pass": true
+  },
+  {
+    "name": "toggle and filters",
+    "pass": true
+  },
+  {
+    "name": "remove completed",
+    "pass": true
+  }
+]
