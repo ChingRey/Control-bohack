@@ -102,10 +102,18 @@ class MemoryLearningTests(unittest.TestCase):
   t=self.task();text=memory.report(t)
   self.assertIn('系统记录',text);self.assertIn('不是掌握证明',text);self.assertIn('尚未整理',text)
 
- def test_large_current_prompt_fails_explicitly_instead_of_truncating(self):
+ def test_large_source_uses_explicit_excerpts_without_changing_original(self):
   t=self.task();t['files']['app.js']='a'*memory.MAX_CONTEXT_CHARS
-  with self.assertRaisesRegex(ValueError,'超过80000'):teaching.context(t,'review')
+  ctx=teaching.context(t,'review')
+  self.assertLess(memory.size(ctx),memory.MAX_CONTEXT_CHARS)
+  self.assertEqual(ctx['project_files']['total_file_count'],1)
+  self.assertEqual(ctx['project_files']['read_tool'],'read_project_file')
   self.assertEqual(len(t['files']['app.js']),memory.MAX_CONTEXT_CHARS)
+
+ def test_large_current_prompt_fails_explicitly_instead_of_truncating(self):
+  t=self.task();t['messages'][-1]['content']='a'*memory.MAX_CONTEXT_CHARS
+  with self.assertRaisesRegex(ValueError,'超过80000'):teaching.context(t,'review')
+  self.assertEqual(len(t['messages'][-1]['content']),memory.MAX_CONTEXT_CHARS)
 
  def test_invalid_learning_does_not_discard_normal_reply(self):
   from test_teaching import TeachingTests

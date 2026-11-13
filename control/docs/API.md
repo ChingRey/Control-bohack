@@ -111,3 +111,49 @@ Coding接口暂为step(task, instruction, learning_context=None)。后端从学�
 POST /api/settings/teaching接收：provider（deepseek/openai，省略仍为deepseek）、api_key、model。OpenAI必须显式填写模型ID；DeepSeek省略model默认deepseek-flash。返回configured与不含密钥的provider元信息（mode、provider、model、protocol）。configured只表示保存完成，不证明账户权限和模型可用。
 
 OpenAI映射到固定Responses端点，DeepSeek映射到固定Chat Completions端点；不接受任意base_url。切换时必须填写对应服务商的密钥，页面切换选项会清空密钥输入；不会回显任何已保存密钥。
+
+## Coding → Teaching 检查点契约
+
+当前采用同进程适配：后端协调器在 Coding 成功提交结果并暂停后，保存 `coding_checkpoints` 事件，再调用 `start_teaching(task, 'checkpoint')`。OpenCode 的阶段执行、显式计划生成以及固定示例的单步执行会产生事件；普通讨论、超时、失败和过期候选不会触发事件。不是网络 webhook，也不开放外部未经验证的检查点写入接口。
+
+```json
+{
+  "schema_version": 1,
+  "event_type": "coding.paused",
+  "session_id": "任务UUID（当前原型一个任务对应一个开发会话）",
+  "checkpoint_id": "Coding运行UUID，固定示例单独生成UUID",
+  "stage": "本轮已确认阶段标题，计划生成时为planning",
+  "stage_index": 0,
+  "kind": "development",
+  "task_description": "本次学生确认的执行指令",
+  "user_requirement": "本会话首条Coding学生需求原文，当前补充要求见task_description及原始对话",
+  "agent_output": "Coding计划或完成说明原文",
+  "project_evidence": {
+    "base_code_hash": "执行前源码哈希",
+    "code_hash": "本轮提交源码哈希",
+    "changes": [{"file":"src/app.js", "before_hash":"...", "after_hash":"...", "diff":"...", "diff_truncated":false}],
+    "runtime_observations": [],
+    "runtime_notice": "浏览器上报未独立验证，未绑定本轮代码版本",
+    "test_records": [],
+    "test_status": "not_run",
+    "read_file_tool": "read_project_file"
+  },
+  "delivery": {"status":"queued", "teaching_run_id":"教师任务UUID"}
+}
+```
+
+- 同一 `checkpoint_id` 只登记一次；事件保存于任务 JSON，GET 任务快照可查看，刷新后仍保留。`delivery` 记录 pending/queued/completed/failed；`teaching_run.checkpoint_id` 和教学轮次 `checkpoint_id` 关联本次事件。不会自动重放失败/重启中的任务；主动“审查代码”可重试最新检查点，不创建新事件。
+- Teaching 通过 `checkpoint_event` 接收事件，结合课程接续与学生证据选择 `plan.goal/reason/next_step`。模型输入中的三项长文本各最多4000字符并标明截断；差异正文合计最多12000字符，最多展示40个变更，遗漏数量明确标注。原始聊天和完整修改前后代码仍在任务记录。
+- 初始 `files` 是最多16000 JSON字符的完整代码行片段，优先本次变更文件；每文件最多120行。`project_files` 给出最多100个文件的路径、行数、哈希、总数及遗漏数量，不把整个仓库正文传入模型。
+- 模型可用只读 `read_project_file(path, start_line=1, limit=120)` 读取本轮工作副本中的项目源码，支持子目录。返回真实行号、项目哈希、总行数及下一行；单次最多12000 JSON字符，整轮累计24000字符。仅允许已加载的当前项目文件，不能读取本机任意路径、执行命令或修改文件。读取过的完整行进入引用校验集合。
+- 后续主动审查时按当前源码计算 `stale_for_code`。旧检查点、Coding文字说明和浏览器ready/error都不等于当前行为测试通过。当前执行器没有测试执行权限，因此 `test_records=[]`、`test_status=not_run`，不制造测试记录或掌握证据。
+- Teaching 运行失败时保留检查点、学生原话及已完成的 Coding 状态和文件；后端仍按任务锁和源码/任务签名拒绝过期教学结果。不自动推进开发阶段、确认验收或加分。
+## Teaching → Coding 操作接口
+
+- 新任务支持 `checkpoint_delivery: "automatic" | "manual"`（默认automatic）；manual不会调用Teaching Agent，事件为 `delivery.status=available`。
+- GET `/api/tasks/:id/checkpoints`、GET `/api/tasks/:id/checkpoints/:checkpoint_id` 获取事件及操作回执。
+- GET `/api/tasks/:id/project-file?path=...&start_line=1&limit=80&checkpoint_id=...` 只读当前项目代码行，标注版本是否与事件匹配。
+- POST `/api/tasks/:id/checkpoints/:checkpoint_id/revise`：`session_id,request_id,confirmed:true,expected_code_hash,instruction`；执行学生确认的当前阶段修改，成功后返回新检查点。
+- POST `/api/tasks/:id/checkpoints/:checkpoint_id/resume`：同上，另需 `teaching_completed:true`；instruction可省略，可携带 `skill_unlocks:[{skill_id,assessment_id,unlocked:true}]`。同根检查点最终恢复只生效一次，并仅执行下一阶段后再暂停。
+- 操作返回 `{operation,task}`，首次启动202；重复请求返回200和原回执，不重复执行。失败用相同内容与相同request_id加 `retry:true` 显式重试；版本/阶段冲突拒绝采用。错误沿用现有400等JSON格式。
+- Skill通知仅为教学端报告；当前实际回执为未启用/未使用，不安装Skill、不加分。双方状态、完整请求示例和不接Teaching的HTTP验收见 [CHECKPOINT_HANDOFF](CHECKPOINT_HANDOFF.md)。

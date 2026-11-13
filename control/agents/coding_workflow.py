@@ -81,6 +81,18 @@ def sync_plan(task, text='', events=None):
     event(task,'plan_synced','聊天中的计划已同步，按原顺序显示')
     return True
 
+def message_intent(text):
+    """Recognize explicit file/command requests without treating '按计划创建' as planning."""
+    import re
+    readonly=bool(re.search(r'(?:只|仅|先|暂时)(?:讨论|分析|解释|规划)|(?:不要|别|暂不|不需要)(?:写|改|创建|生成|执行|开发)|(?:怎么|如何|能否|是否|能不能).{0,18}(?:创建|写入|修改|实现|开发)',text))
+    plan=bool(re.search(r'(?:制定|生成|讨论|调整|给出|设计|修改).{0,6}(?:计划|规划)|(?:计划|规划).{0,6}(?:怎么|如何|是否)',text))
+    edit=bool(re.search(r'开始|执行|实现|开发|修改|修复|写代码|继续|创建|新建|写入|编写|添加|删除|重命名|移动|安装|构建|运行|测试|create|write|implement|fix|build|install|rename|delete',text,re.I))
+    return 'execute' if edit and not (readonly or plan) else 'discuss'
+
+def direct_file_request(text):
+    import re
+    return bool(re.search(r'^(?:(?:请|帮我|麻烦|直接|现在|立即|给我|请你|按计划|按照计划)\s*)*(?:创建|新建|写入|编写|修改|删除|重命名).{0,120}(?:[.](?:[cm]?js|tsx?|jsx|py|html|css|sql|json)|(?:JS|JavaScript|脚本)文件)',text,re.I))
+
 def accept_phase(task):
     s=state(task);i=task['step']
     if not task.get('plan') or i>=len(task['plan']):raise ValueError('没有待检查的阶段')

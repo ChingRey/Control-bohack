@@ -104,8 +104,8 @@ class KnowledgeApiTests(unittest.TestCase):
     import time
     deadline=time.time()+5
     while time.time()<deadline:
-     current=b.load(self.task['id'])
-     if current['coding_run']['status']!='running':break
+     with b.task_lock(self.task['id']):current=b.load(self.task['id'])
+     if current['coding_run']['status'] not in ('queued','running') and current.get('teaching_run',{}).get('status') not in ('queued','running'):break
      time.sleep(.01)
    current=b.load(self.task['id'])
    self.assertEqual(current['coding_run']['status'],'completed')

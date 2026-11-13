@@ -12,8 +12,8 @@ import tempfile
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
-from agents import teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor, code_refs, project_files
+from urllib.parse import urlparse, parse_qs
+from agents import teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor, code_refs, project_files, checkpoint_control, checkpoints as checkpoint_events
 from agents.coding import PLAN, FILES, SampleCodingAgent
 
 ROOT = Path(__file__).resolve().parent
@@ -108,10 +108,36 @@ def write_project_file(path,content):
  finally:
   if temporary is not None and temporary.exists():temporary.unlink()
 
+def apply_coding_files(task, before, after, instruction):
+ touched=[];changes=[]
+ try:
+  for name in sorted(set(before)|set(after)):
+   if before.get(name)==after.get(name):continue
+   path=project_files.target(project(task['id']),name)
+   touched.append(name)
+   if name in after:write_project_file(path,after[name])
+   else:path.unlink()
+   changes.append(dict(file=name,before=before.get(name,''),after=after.get(name,''),deleted=name not in after,instruction=instruction))
+ except Exception:
+  rollback_failed=False
+  for name in reversed(touched):
+   try:
+    path=project_files.target(project(task['id']),name)
+    if name in before:write_project_file(path,before[name])
+    elif path.exists():path.unlink()
+   except OSError:rollback_failed=True
+  if rollback_failed:raise ValueError('部分文件恢复失败，请核对项目文件') from None
+  raise
+ task['changes'].extend(changes)
+
 def start_teaching(t, action='message'):
  if t.get('teaching_run',{}).get('status') in ('queued','running'): raise ValueError('教师正在处理上一条消息')
  teaching.state(t)
  job={'id':str(uuid.uuid4()),'status':'queued','detail':'消息已保存，等待教师处理','started_at':time.time()}
+ if action in ('checkpoint','review') and t.get('coding_checkpoints'):
+  checkpoint=t['coding_checkpoints'][-1]
+  job['checkpoint_id']=checkpoint['checkpoint_id']
+  checkpoint['delivery']={'status':'queued','teaching_run_id':job['id']}
  t['teaching_run']=job;save(t)
  baseline=task_signature(t);work=json.loads(json.dumps(t));base_count=len(t['messages'])
  def worker():
@@ -145,10 +171,27 @@ def start_teaching(t, action='message'):
     fresh['teaching']=work['teaching']
    if not stale and result['status']=='failed' and work['teaching']['memory']['revision']>fresh['teaching']['memory']['revision']:
     fresh['teaching']['memory']=work['teaching']['memory']
+   if job.get('checkpoint_id'):
+    for checkpoint in fresh.get('coding_checkpoints',[]):
+     if checkpoint['checkpoint_id']==job['checkpoint_id']:
+      checkpoint['delivery'].update(status=result['status'],error=result.get('error'))
    fresh['teaching_run'].update(result,elapsed_seconds=round(time.time()-job['started_at'],1))
    if result['status']=='failed': teaching.state(fresh)['last_error']=result['error']
    save(fresh)
  threading.Thread(target=worker,daemon=True).start()
+
+def start_checkpoint_teaching(t):
+ # Coding is already committed. A Teaching failure must not rewrite its status.
+ if t.get('checkpoint_delivery')=='manual':
+  t['coding_checkpoints'][-1]['delivery']={'status':'available','mode':'manual'};save(t);return
+ try:
+  start_teaching(t,'checkpoint')
+ except Exception as e:
+  detail=str(e) if isinstance(e,ValueError) else '教师检查点启动失败，请重新审查'
+  t['teaching_run']={'id':str(uuid.uuid4()),'status':'failed','detail':'开发已保存，教师检查点未完成；可重新审查',
+                     'error':detail,'checkpoint_id':t['coding_checkpoints'][-1]['checkpoint_id']}
+  t['coding_checkpoints'][-1]['delivery']={'status':'failed','error':detail}
+  save(t)
 
 def message(t, channel, role, content):
  entry=dict(channel=channel, role=role, content=content)
@@ -156,10 +199,14 @@ def message(t, channel, role, content):
  t['messages'].append(entry)
 
 
-def start_coding(t, instruction, planning=False, chatting=False):
+def start_coding(t, instruction, planning=False, chatting=False, checkpoint_operation=None):
  if not opencode_executor.metadata()['configured']:raise ValueError('请先连接Coding模型')
  if not opencode_executor.binary():raise ValueError('OpenCode尚未安装')
  job={'id':str(uuid.uuid4()),'status':'running','detail':'Coding Agent正在处理当前阶段…','started_at':time.time()}
+ if checkpoint_operation is not None:
+  job['checkpoint_operation']={'checkpoint_id':checkpoint_operation['root_checkpoint_id'],'request_id':checkpoint_operation['request_id']}
+  job['skill_results']=checkpoint_operation['skill_results']
+  checkpoint_operation.update(status='running',coding_run_id=job['id'])
  t['coding_run']=job;save(t)
  work=json.loads(json.dumps(t));original=read_project_files(t['id']);signature=task_signature(t)
  with connection() as c:knowledge_context=knowledge.search(c,t['id'],instruction,knowledge.code_hash(original)) if t.get('knowledge_enabled',True) else []
@@ -170,6 +217,7 @@ def start_coding(t, instruction, planning=False, chatting=False):
   packet['execution_boundary']='仅执行authorized_phase；不得推进其他阶段，不得修改已确认计划。完成后停止等待学生检查。'
  if chatting:
   packet={'student_message':instruction,'learning_context':packet['learning_context'],'project_knowledge':knowledge_context,'locked_plan':bool(t.get('plan')),'authorized_phase':t['plan'][t['step']] if t.get('plan') and t['step']<len(t['plan']) else None}
+ if checkpoint_operation is not None:packet['skill_unlock_notifications']=checkpoint_operation['skill_results']
  packet['recent_dialogue']=[{'role':m['role'],'content':m['content'][:4000]} for m in work['messages'] if m['channel']=='coding'][-12:]
  def worker():
   try:
@@ -183,37 +231,62 @@ def start_coding(t, instruction, planning=False, chatting=False):
      if fresh.get('plan') and any(result['files'].get(n)!=original.get(n) for n in result['files']):
       coding_workflow.state(fresh)['checkpoints'][fresh['step']]['status']='executed_pending_review'
      coding_workflow.sync_plan(fresh,result['text'],result['events'])
-     for name,after in result['files'].items():
-      if after!=original.get(name,''):
-       write_project_file(project_files.target(project(t['id']),name),after)
-       fresh['changes'].append(dict(file=name,before=original.get(name,''),after=after,instruction=instruction))
+     apply_coding_files(fresh,original,result['files'],instruction)
     elif planning:
      if not coding_workflow.sync_plan(fresh,result['text'],result['events']):
       if not fresh.get('plan_draft'):raise ValueError('尚未形成可同步的计划，请继续讨论阶段和验收点')
     else:
-     for name,after in result['files'].items():
-      if after!=original.get(name,''):
-       write_project_file(project_files.target(project(t['id']),name),after)
-       fresh['changes'].append(dict(file=name,before=original.get(name,''),after=after,instruction=instruction))
+     apply_coding_files(fresh,original,result['files'],instruction)
      coding_workflow.state(fresh)['checkpoints'][fresh['step']]['status']='executed_pending_review'
      fresh['stage']='review'
     w=coding_workflow.state(fresh);w['status']='paused';w['tool_events']=result['events']
     w['loads'].append({'phase':work['step'],'rule_versions':[{'id':r['id'],'revision':r['revision']} for r in packet['learning_context']['rules']],'knowledge_versions':[{'id':r['id'],'revision':r['revision'],'code_hash':r['code_hash']} for r in packet.get('project_knowledge',[])],'skill_versions':[],'submitted':True,'applied':False})
     coding_workflow.event(fresh,'turn_finished','OpenCode轮次结束；等待学生审查与确认，未验证行为正确性')
-    message(fresh,'coding','assistant',result['text']);fresh['messages'][-1]['code_refs']=code_refs.collect(result['text'],result['files']);fresh['coding_run'].update(status='completed',detail='已暂停，等待审查');save(fresh)
+    message(fresh,'coding','assistant',result['text']);fresh['messages'][-1]['code_refs']=code_refs.collect(result['text'],result['files']);fresh['coding_run'].update(status='completed',detail='已暂停，等待审查')
+    if not chatting:
+     checkpoint=checkpoint_events.record(fresh,job['id'],instruction,result['text'],original,result['files'],work['step'],'planning' if planning else 'development',result.get('events',[]))
+     if checkpoint_operation is not None:
+      checkpoint['previous_checkpoint_id']=work['coding_checkpoints'][-1]['checkpoint_id']
+      if checkpoint_operation['action']=='revise':checkpoint['root_checkpoint_id']=checkpoint_operation['root_checkpoint_id']
+    checkpoint_control.finish(fresh,job,'completed',job['id'] if not chatting else None)
+    save(fresh)
+    if not chatting:start_checkpoint_teaching(fresh)
   except Exception as e:
    with task_lock(t['id']):
     fresh=load(t['id'])
     if fresh.get('coding_run',{}).get('id')==job['id']:
-     fresh['coding_run'].update(status='failed',detail=str(e) if isinstance(e,ValueError) else '执行器异常：'+type(e).__name__+'；阶段未推进');save(fresh)
+     detail=str(e) if isinstance(e,ValueError) else '执行器异常：'+type(e).__name__+'；本轮未完成'
+     fresh['coding_run'].update(status='failed',detail=detail)
+     checkpoint_control.finish(fresh,job,'failed',error=detail);save(fresh)
  threading.Thread(target=worker,daemon=True).start()
+
+def checkpoint_command(t, checkpoint_id, action, body):
+ operation,launch=checkpoint_control.prepare(t,checkpoint_id,action,body,read_project_files(t['id']))
+ if not launch:return 200,{'operation':operation,'task':snapshot(t)}
+ if operation['target_step']>=len(t['plan']):
+  operation['status']='completed';operation['outcome']='development_finished';save(t)
+  return 200,{'operation':operation,'task':snapshot(t)}
+ # Configuration errors reject an uncommitted task copy, so acceptance is not lost.
+ if not opencode_executor.metadata()['configured'] or not opencode_executor.binary():raise ValueError('请先连接并安装Coding执行器')
+ instruction=operation['instruction'] or t['plan'][t['step']]
+ if not t.get('messages') or t['messages'][-1].get('role')!='user' or t['messages'][-1].get('channel')!='coding' or t['messages'][-1].get('content')!=instruction:
+  message(t,'coding','user',instruction)
+ t['messages'][-1].update(source='student_confirmed_teaching_command',request_id=operation['request_id'])
+ save(t)
+ try:start_coding(t,instruction,checkpoint_operation=operation)
+ except Exception as e:
+  operation.update(status='failed',error=str(e) if isinstance(e,ValueError) else 'Coding启动失败')
+  if t.get('coding_run',{}).get('checkpoint_operation',{}).get('request_id')==operation['request_id']:
+   t['coding_run'].update(status='failed',detail='Coding启动失败；可使用相同请求重试')
+  save(t)
+ return 202,{'operation':operation,'task':snapshot(t)}
 
 CODING=SampleCodingAgent(project,write_project_file)
 PREVIEW_PORT=None
 
 def safe_preview_name(name):
  import re
- return project_files.allowed(name) and Path(name).suffix.lower() in ('.html','.js','.css','.svg')
+ return project_files.allowed(name) and Path(name).suffix.lower() in ('.html','.js','.mjs','.css','.svg','.json')
 
 class PreviewHandler(BaseHTTPRequestHandler):
  def do_GET(self):
@@ -245,6 +318,20 @@ class Handler(BaseHTTPRequestHandler):
    if parts==['api','tasks']:
     with connection() as c: rows=c.execute('SELECT body FROM tasks ORDER BY rowid DESC').fetchall()
     return self.reply(200,[{'id':(t:=json.loads(r[0]))['id'],'title':t['title']} for r in rows])
+   if len(parts) in (4,5) and parts[:2]==['api','tasks'] and parts[3]=='checkpoints':
+    with task_lock(parts[2]):
+     task=load(parts[2]);events=task.get('coding_checkpoints',[])
+     if len(parts)==5:return self.reply(200,checkpoint_control.find(task,parts[4]))
+     return self.reply(200,{'session_id':task['id'],'items':events[-50:],'total':len(events)})
+   if len(parts)==4 and parts[:2]==['api','tasks'] and parts[3]=='project-file':
+    with task_lock(parts[2]):
+     task=load(parts[2]);files=read_project_files(task['id']);query=parse_qs(urlparse(self.path).query)
+     args={'path':query.get('path',[''])[0],'start_line':int(query.get('start_line',['1'])[0]),'limit':int(query.get('limit',['120'])[0])}
+     result=teaching.dispatch_tool('read_project_file',args,{'files':{},'code_hash':knowledge.code_hash(files)},project_source=files)
+     if query.get('checkpoint_id'):
+      checkpoint=checkpoint_control.find(task,query['checkpoint_id'][0])
+      result['stale_for_checkpoint']=checkpoint['project_evidence']['code_hash']!=result['code_hash']
+     return self.reply(200,result)
    if len(parts)==4 and parts[:2]==['api','tasks'] and parts[3] in ('learning','learning-record.md'):
     with task_lock(parts[2]):
      task=load(parts[2]);teaching.state(task)
@@ -285,6 +372,9 @@ class Handler(BaseHTTPRequestHandler):
     if parts==['api','tasks']:
      tid=str(uuid.uuid4());t=dict(id=tid,title='待办事项 · 示例教程',mode='sample',stage='created',step=0,plan=[],plan_draft=[],messages=[],changes=[],checks=[])
      teaching.state(t)
+     delivery=body.get('checkpoint_delivery','automatic')
+     if delivery not in ('automatic','manual'):raise ValueError('checkpoint_delivery必须为automatic或manual')
+     t['checkpoint_delivery']=delivery
      if body.get('coding_mode')=='opencode':
       t.update(mode='opencode',title='OpenCode · 分阶段开发（待连接模型）');coding_workflow.state(t)
      if t['mode']!='opencode':
@@ -303,6 +393,8 @@ class Handler(BaseHTTPRequestHandler):
     else:
      if len(parts)<4 or parts[:2]!=['api','tasks']: return self.reply(404,{'error':'接口不存在'})
      t=load(parts[2]); action='/'.join(parts[3:]); text=body.get('message','')
+     if len(parts)==6 and parts[3]=='checkpoints':
+      code,result=checkpoint_command(t,parts[4],parts[5],body);return self.reply(code,result)
      if t.get('coding_run',{}).get('status') in ('queued','running'):raise ValueError('Coding正在执行，请稍等')
      if t.get('teaching_run',{}).get('status') in ('queued','running'): raise ValueError('教师正在处理上一条消息，请稍等')
      if not isinstance(text,str) or len(text)>12000: raise ValueError('消息格式不正确或过长')
@@ -360,12 +452,19 @@ class Handler(BaseHTTPRequestHandler):
         if checkpoints[t['step']]['status']=='executed_pending_review':raise ValueError('当前阶段待检查，请先反馈问题或确认检查通过')
         start_coding(t,t['plan'][t['step']]);return self.reply(202,snapshot(t))
        import re
-       wants_plan=bool(re.search(r'计划|规划|分步|步骤|拆分',command))
-       wants_edit=bool(re.search(r'开始|执行|实现|开发|修改|修复|写代码|继续',command)) and not wants_plan
+       wants_edit=coding_workflow.message_intent(command)=='execute'
+       if wants_edit and not t.get('plan') and coding_workflow.direct_file_request(command):
+        t['plan']=[text[:300]];t['plan_draft']=list(t['plan']);coding_workflow.confirm(t)
+        coding_workflow.state(t)['plan_source']='student_direct_file_instruction'
        if wants_edit and t.get('plan'):
         if t['step']>=len(t['plan']):raise ValueError('已确认计划全部完成，如需新任务请先制定新计划')
-        if coding_workflow.state(t)['checkpoints'][t['step']]['status']=='executed_pending_review':raise ValueError('当前阶段待检查，请先确认通过；返工请明确说“返工当前阶段”')
+        if coding_workflow.state(t)['checkpoints'][t['step']]['status']=='executed_pending_review' and t.get('coding_checkpoints'):
+         checkpoint=t['coding_checkpoints'][-1]
+         code,result=checkpoint_command(t,checkpoint['checkpoint_id'],'revise',{'session_id':t['id'],'request_id':str(uuid.uuid4()),'confirmed':True,'instruction':text,'expected_code_hash':knowledge.code_hash(read_project_files(t['id']))})
+         return self.reply(code,result['task'])
         start_coding(t,t['plan'][t['step']]+'\n学生补充：'+text);return self.reply(202,snapshot(t))
+       if wants_edit and not t.get('plan'):
+        save(t);raise ValueError('已识别为执行请求，请先确认项目开发计划；也可直接要求创建具体代码文件')
        start_coding(t,text,chatting=True);return self.reply(202,snapshot(t))
       if ch=='teaching':
        start_teaching(t);return self.reply(202,snapshot(t))
@@ -434,7 +533,9 @@ class Handler(BaseHTTPRequestHandler):
       message(t,'coding','user','确认执行：'+instruction)
       packet=learning.coding_packet(t,instruction)
       ls=learning.state(t);ls['coding_loads'].append({'step':t['step'],'rule_versions':[{'id':r['id'],'revision':r['revision']} for r in packet['rules']], 'applied':False,'adapter':'sample_records_only'});ls['revision']+=1
+      before=read_project_files(t['id']);stage_index=t['step']
       answer=CODING.step(t,instruction,packet);t['step']+=1;t['stage']='review';message(t,'coding','assistant',answer)
+      checkpoint_events.record(t,str(uuid.uuid4()),instruction,answer,before,read_project_files(t['id']),stage_index)
      elif action=='files':
       name=body.get('path');content=body.get('content')
       if name not in read_project_files(t['id']) or not isinstance(content,str): raise ValueError('文件或内容不正确')
@@ -449,7 +550,10 @@ class Handler(BaseHTTPRequestHandler):
      teaching.state(t)['assessment']='insufficient'
      teaching.state(t)['transfer_answer']=None
      teaching.state(t)['pending_transfer']=None
-     start_teaching(t,'review');return self.reply(202,snapshot(t))
+     if action=='steps/run':
+      save(t);start_checkpoint_teaching(t)
+     else:start_teaching(t,'review')
+     return self.reply(202,snapshot(t))
     save(t);self.reply(200,snapshot(t))
   except UnicodeError: self.reply(422,{'error':'文件或请求不是有效的 UTF-8 文本，请检查编码'})
   except (ValueError,TypeError,KeyError,json.JSONDecodeError) as e: self.reply(400,{'error':str(e)})
@@ -474,6 +578,11 @@ def recover_interrupted(t):
  for key in ('coding_run','teaching_run'):
   if t.get(key,{}).get('status') in ('queued','running'):
    t[key].update(status='failed',detail='服务重启中断了上次执行，请检查项目后重试')
+   if key=='coding_run':checkpoint_control.finish(t,t[key],'failed',error='service_restarted')
+   if key=='teaching_run':
+    for checkpoint in t.get('coding_checkpoints',[]):
+     if checkpoint['checkpoint_id']==t[key].get('checkpoint_id'):
+      checkpoint['delivery'].update(status='failed',error='service_restarted')
    changed=True
  return changed
 

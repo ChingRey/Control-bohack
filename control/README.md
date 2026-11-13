@@ -92,3 +92,10 @@ control/
 OpenAI使用官方Responses API，记忆摘要也使用同一服务商；不需要登录Codex或读取Codex凭据。此接入只切换Teaching模型，Coding依然是固定示例。提供商URL固定，密钥不写入数据库或浏览器持久化。
 
 当前共53项自动测试；OpenAI网络部分使用模拟响应验证，真实账户调用需本机填写密钥后验证。详见[OpenAI接入说明](docs/OPENAI_SETUP.md)。
+
+## Coding → Teaching 检查点
+
+OpenCode 阶段执行或计划生成成功保存并暂停后，自动发送一次检查点给 Teaching；固定示例执行同样提供该事件，普通聊天和失败执行不发送。教师失败保留开发成果，可用“审查代码”重试。事件字段、版本与只读源码接口见 [API](docs/API.md#coding--teaching-检查点契约)。这不表示已通过行为测试或学生已掌握。
+双向检查点现支持学生确认的修改要求、一次性恢复、每轮修改后再次返回检查点、Skill通知与未启用回执。可新建 `checkpoint_delivery=manual` 的任务，在不连接Teaching Agent时通过HTTP接收事件并恢复下一阶段；[协议与验收](docs/CHECKPOINT_HANDOFF.md)包含字段、状态、错误和重试约定。
+
+已修复明确创建JS文件被分入只读聊天的问题；项目内文本源码和配置支持创建、修改、重命名、删除。计划/讨论仍只读。Shell和外部联网工具尚未开放；实际OpenCode写文件可用 `python scripts/verify_opencode_write.py` 通过本机模拟模型验证，无真实模型费用。

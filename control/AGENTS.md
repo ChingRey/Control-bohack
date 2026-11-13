@@ -112,3 +112,10 @@ OpenAI使用store=false；函数调用和reasoning响应项在同轮后续请求
 OPENAI_API_KEY与TEACHING_MODEL可通过环境配置，或页面选择OpenAI；有多个服务商时显式设置TEACHING_PROVIDER。显式官方provider始终使用固定官方URL，不接受前端传入base_url。旧TEACHING_ENDPOINT用于未显式指定provider的兼容测试配置。
 
 53项测试包含Responses格式、工具/推理项续传、摘要、密钥不落库、不串提供商和旧DeepSeek接口兼容。真实OpenAI账户API尚需用户配置后验证；不要将mock通过写成真实模型成功。
+## 双向检查点接续
+
+先读docs/CHECKPOINT_HANDOFF.md。agents/checkpoints.py登记coding.paused事件，agents/checkpoint_control.py处理学生确认的revise/resume、版本校验和幂等。checkpoint_id默认取Coding运行ID；多次修改通过root_checkpoint_id归属同一检查点族。最终恢复只接受一次；失败重试沿用原request_id和target_step，不能再次推进原阶段。
+
+manual delivery可完全不调用Teaching Agent。Skill通知为教学端报告；实际启用和使用回执目前必须为false，不接受客户端传enabled/installed。Teaching失败不得改写已完成Coding状态。事件、操作、学生原话保存在任务JSON，启动恢复要同步标记操作失败，不能自动重放。
+
+明确项目文件命令支持直接执行和后续返工；普通讨论仍只读。OpenCode配置只显式允许项目文件工具，Shell和外部网络仍被拒绝；不得把本次文件修复描述为已开放全部执行权限。文件写入失败尝试回滚，本地data不清理。verify_opencode_write.py使用真实CLI及本机模拟服务，不是实际模型质量验收。
