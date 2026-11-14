@@ -44,3 +44,7 @@
 需要可用账户后的人工验收：Coding真实任务完成质量；Teaching讲解与材料提炼的准确性；多轮学生学习效果；Skill有无改善任务表现。没有真实模型有效样本时不得用Mock或加载成功代替这些结论。
 
 浏览器实现依据：[Chromium Headless](https://developer.chrome.com/docs/automation-and-testing/headless)、[DevTools Protocol](https://chromedevtools.github.io/devtools-protocol/)。
+
+## 教学资料接入补充
+
+真实Teaching现按问题、阶段与选学偏好加载筛选后的课卡，并记录资料版本和出处。31条来源、21张课卡，每轮最多两张；资料与学生证据分开。工具保持只读，开发与恢复流程不增加关卡，详见TEACHING_LIBRARY.md。

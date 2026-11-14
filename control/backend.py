@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
-from agents import workflow_records, project_safety, project_delivery, student_library, project_runner, project_runtime, workflow, teaching_sessions, evolution_port, skill_gateway, teaching_bridge, teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor, code_refs, project_files, checkpoint_control, checkpoints as checkpoint_events
+from agents import workflow_records, project_safety, project_delivery, student_library, project_runner, project_runtime, teaching_library, workflow, teaching_sessions, evolution_port, skill_gateway, teaching_bridge, teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor, code_refs, project_files, checkpoint_control, checkpoints as checkpoint_events
 from agents.coding import PLAN, FILES, SampleCodingAgent
 
 ROOT = Path(__file__).resolve().parent
@@ -96,6 +96,7 @@ def snapshot(t):
  t['teaching_provider'] = teaching.TeachingAgent().metadata()
  teaching.state(t)
  t['knowledge_topics']=teaching.KNOWLEDGE
+ if t.get('mode')=='opencode':t['teaching_library']=teaching_library.view(t)
  t['learning_overview']={'profile':learning.profile(t),'skills':learning.readiness(t)}
  with connection() as c:t['project_knowledge']=knowledge.list_task(c,t['id'])
  t['preview_url']=f'http://127.0.0.1:{PREVIEW_PORT}/preview/{t["id"]}/index.html' if PREVIEW_PORT else f'/preview/{t["id"]}/index.html'
@@ -464,7 +465,7 @@ class Handler(BaseHTTPRequestHandler):
  def do_GET(self):
   try:
    parts=urlparse(self.path).path.strip('/').split('/')
-   if parts==['api','health']: return self.reply(200,{'coding_mode':'sample_or_opencode','coding':opencode_executor.metadata(),'teaching':teaching.TeachingAgent().metadata(),'storage':'sqlite'})
+   if parts==['api','health']: return self.reply(200,{'coding_mode':'sample_or_opencode','coding':opencode_executor.metadata(),'teaching':teaching.TeachingAgent().metadata(),'teaching_library':teaching_library.metadata(),'storage':'sqlite'})
    if parts==['api','students']:
     with connection() as c:rows=c.execute('SELECT body FROM student_libraries').fetchall()
     return self.reply(200,[{k:r[k] for k in ('id','name','revision')} for (body,) in rows for r in [json.loads(body)]])
@@ -608,6 +609,13 @@ class Handler(BaseHTTPRequestHandler):
       start_verification(t,'browser',body);return self.reply(202,snapshot(t))
      elif action=='project/test':
       start_verification(t,'tests',body);return self.reply(202,snapshot(t))
+     elif action=='teaching/resources':
+      teaching_library.choose(t,body.get('lesson_id'),body.get('choice'))
+      if body.get('choice')=='learn':
+       card=next(c for c in teaching_library.catalog()['lessons'] if c['id']==body['lesson_id'])
+       message(t,'teaching','user','我想结合当前项目了解：'+card['title'])
+       start_teaching(t,'lesson');return self.reply(202,snapshot(t))
+      save(t);return self.reply(200,snapshot(t))
      elif action=='workflow/organize':
       start_organizer(t);return self.reply(202,snapshot(t))
      elif action=='workflow/proposals/review':

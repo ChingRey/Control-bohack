@@ -1,0 +1,30 @@
+{
+  "date": "2026-11-14",
+  "library": {
+    "revision": "teaching-20261114-v1",
+    "content_hash": "b29db62101587ef296d539929d96b8db9c4c26493a436118e10a8d8ae68a3dc9",
+    "lesson_count": 21,
+    "source_count": 31,
+    "max_lessons_per_turn": 2,
+    "effectiveness_validated": false
+  },
+  "regression_tests": {
+    "count": 159,
+    "result": "passed",
+    "real_browser_cases_enabled": true
+  },
+  "workbench_ui": {
+    "browser": "isolated Chromium",
+    "lesson_selection_and_provenance": "passed",
+    "feature_accept_restore_and_delivery": "passed",
+    "student_data": "temporary database only",
+    "model_responses": "sample or mock in automated checks"
+  },
+  "teaching_permissions": [
+    "read_project_file",
+    "read_message_history"
+  ],
+  "coding_execution_timeout_seconds": 900,
+  "real_model_effectiveness_validated": false,
+  "student_learning_effectiveness_validated": false
+}

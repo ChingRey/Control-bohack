@@ -1,0 +1,583 @@
+{
+  "schema_version": 1,
+  "lesson_count": 21,
+  "status": "reviewed_for_runtime_not_effectiveness_validated",
+  "runtime_enabled": true,
+  "lessons": [
+    {
+      "id": "L01",
+      "title": "把大想法缩成一个核心操作",
+      "stage": 0,
+      "main_question": "第一版只帮谁完成哪一件事？",
+      "student_activity": "用自己的项目画出起点、一次操作和结果，其他功能放以后。",
+      "evidence_to_seek": "学生能说明取舍及不做的内容。",
+      "common_misconception": "功能越多第一版越成功。",
+      "source_ids": [
+        "R22",
+        "R41",
+        "R02"
+      ],
+      "method_ids": [
+        "requirement-scoping"
+      ],
+      "transfer_prompt": "换成另一位使用者，哪些需求会改变？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R22",
+        "R41",
+        "R02"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L02",
+      "title": "把愿望写成可观察的验收",
+      "stage": 0,
+      "main_question": "出现什么结果，你才认为这一步做好了？",
+      "student_activity": "为核心操作写一个可观察结果和一个不应发生的结果。",
+      "evidence_to_seek": "验收描述可由另一个人照着执行。",
+      "common_misconception": "看起来漂亮或模型说完成就是验收。",
+      "source_ids": [
+        "R41",
+        "R38",
+        "R02"
+      ],
+      "method_ids": [
+        "requirement-scoping",
+        "guided-testing"
+      ],
+      "transfer_prompt": "把同一验收改写成一个能失败的检查。",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R41",
+        "R38",
+        "R02"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L03",
+      "title": "页面、样式与行为各负责什么",
+      "stage": 1,
+      "main_question": "改按钮颜色和改点击后的结果，需要找同一类代码吗？",
+      "student_activity": "在当前作品找一个元素、一条样式和一个处理函数。",
+      "evidence_to_seek": "能指出真实文件及各自作用，不要求背全部语法。",
+      "common_misconception": "HTML、CSS、JS都只是不同名字的页面文字。",
+      "source_ids": [
+        "R16",
+        "R17",
+        "R09"
+      ],
+      "method_ids": [
+        "concept-walkthrough"
+      ],
+      "transfer_prompt": "新增一个提示区时，哪些层可能需要变化？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R16",
+        "R17",
+        "R09"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L04",
+      "title": "沿点击事件走一遍",
+      "stage": 1,
+      "main_question": "按下按钮后，程序先读什么，再改变什么？",
+      "student_activity": "先预测一次点击，再操作，沿当前处理函数追踪。",
+      "evidence_to_seek": "能连接输入、处理、数据与页面输出。",
+      "common_misconception": "按钮能点就等于事件逻辑正确。",
+      "source_ids": [
+        "R08",
+        "R18"
+      ],
+      "method_ids": [
+        "concept-walkthrough"
+      ],
+      "transfer_prompt": "如果改成按回车提交，哪些检查应该保持相同？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R08",
+        "R18"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L05",
+      "title": "看见空、忙、成功和失败的状态",
+      "stage": 1,
+      "main_question": "用户怎样知道是在等待、没有数据，还是失败了？",
+      "student_activity": "给当前作品画出几种状态和可见反馈。",
+      "evidence_to_seek": "状态与真实触发条件对应。",
+      "common_misconception": "一直转圈只是界面小问题。",
+      "source_ids": [
+        "R20",
+        "R24",
+        "R29"
+      ],
+      "method_ids": [
+        "concept-walkthrough"
+      ],
+      "transfer_prompt": "连续点两次提交时，你预测会出现什么状态？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R20",
+        "R24"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L06",
+      "title": "输入值不总是业务数据",
+      "stage": 1,
+      "main_question": "输入框里的金额，为什么不一定能直接拿来计算？",
+      "student_activity": "比较空串、空格、零、负数和小数，先定项目规则。",
+      "evidence_to_seek": "能解释类型转换与业务约束不同。",
+      "common_misconception": "数字输入框保证所有数据都符合业务规则。",
+      "source_ids": [
+        "R17",
+        "R25",
+        "R40"
+      ],
+      "method_ids": [
+        "concept-walkthrough"
+      ],
+      "transfer_prompt": "把金额换成库存数量，哪些规则不同？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R17",
+        "R25",
+        "R40"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L07",
+      "title": "前端检查与服务端检查",
+      "stage": 1,
+      "main_question": "页面已经拦住空输入，服务器还需要检查吗？",
+      "student_activity": "结合当前是否存在后端，区分体验检查和服务端拒绝。",
+      "evidence_to_seek": "能说明仅靠页面无法保护服务器。",
+      "common_misconception": "有required就不需要其他检查。",
+      "source_ids": [
+        "R19",
+        "R40"
+      ],
+      "method_ids": [
+        "concept-walkthrough",
+        "safety-guard"
+      ],
+      "transfer_prompt": "另一个客户端直接请求接口时，规则由谁执行？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R19",
+        "R40"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L08",
+      "title": "数据字段与稳定身份",
+      "stage": 1,
+      "main_question": "两条名称相同的记录，怎样知道删的是哪一条？",
+      "student_activity": "设计一条最小记录，区分显示文字与稳定标识。",
+      "evidence_to_seek": "字段有用途，能解释重复和排序后的身份。",
+      "common_misconception": "数组位置或名字永远能当身份。",
+      "source_ids": [
+        "R17",
+        "R29"
+      ],
+      "method_ids": [
+        "concept-walkthrough"
+      ],
+      "transfer_prompt": "排序后再删除，原来的定位方法还可靠吗？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R17",
+        "R25"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L09",
+      "title": "刷新后数据在哪里",
+      "stage": 1,
+      "main_question": "刷新、清理存储、换浏览器，结果会一样吗？",
+      "student_activity": "逐项写预测与实际；说明当前项目的存储来源。",
+      "evidence_to_seek": "能区分内存、本地存储和服务器数据。",
+      "common_misconception": "本地保存等于账号云同步。",
+      "source_ids": [
+        "R21",
+        "R08"
+      ],
+      "method_ids": [
+        "concept-walkthrough",
+        "guided-testing"
+      ],
+      "transfer_prompt": "换一个来源地址后数据消失，先查什么？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R21",
+        "R08"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L10",
+      "title": "向Coding发出一次清楚的小任务",
+      "stage": 2,
+      "main_question": "这次改什么，哪些已有行为必须保留？",
+      "student_activity": "学生自行写目标、范围、约束和验收，再发送。",
+      "evidence_to_seek": "能限定一轮任务，并辨认Agent越界。",
+      "common_misconception": "给AI越长越多的任务越省时间。",
+      "source_ids": [
+        "R32",
+        "R41"
+      ],
+      "method_ids": [
+        "requirement-scoping",
+        "code-review-diff"
+      ],
+      "transfer_prompt": "把“不对，重改”改成有操作证据的一条请求。",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R32",
+        "R41"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L11",
+      "title": "读懂少量相关代码",
+      "stage": 2,
+      "main_question": "哪几行把输入变成了现在的页面结果？",
+      "student_activity": "只追踪一条当前数据路径，先解释再查不懂的语法。",
+      "evidence_to_seek": "引用当前文件真实行号并连起因果。",
+      "common_misconception": "要先读完仓库才能理解一个功能。",
+      "source_ids": [
+        "R08",
+        "R09",
+        "R18"
+      ],
+      "method_ids": [
+        "concept-walkthrough"
+      ],
+      "transfer_prompt": "把输入换掉，你预计哪一步的结果先变化？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R08",
+        "R09",
+        "R18"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L12",
+      "title": "区分真正的问题与风格偏好",
+      "stage": 2,
+      "main_question": "这次Diff改变了什么用户行为，有没有改到无关数据？",
+      "student_activity": "挑一个行为变化核对需求，再给改动分优先级。",
+      "evidence_to_seek": "指出相关文件和验证办法，不只评价长短美观。",
+      "common_misconception": "代码更短或某种命名一定更正确。",
+      "source_ids": [
+        "R36",
+        "R37"
+      ],
+      "method_ids": [
+        "code-review-diff"
+      ],
+      "transfer_prompt": "如果只改样式却触及存储键，你会怎么核对？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R36",
+        "R37"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L13",
+      "title": "正常、边界、失败各测一次",
+      "stage": 2,
+      "main_question": "除了正常输入，哪一种操作最能挑战你的假设？",
+      "student_activity": "写操作、预期、实际；从正常、边界和失败路径中选相关项。",
+      "evidence_to_seek": "测试绑定当前版本，断言能判别错误。",
+      "common_misconception": "页面加载成功、无红字就代表功能通过。",
+      "source_ids": [
+        "R38",
+        "R19",
+        "R03"
+      ],
+      "method_ids": [
+        "guided-testing"
+      ],
+      "transfer_prompt": "给一个看似合理但检不出错误的测试，并改好它。",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R38",
+        "R19",
+        "R03"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L14",
+      "title": "用证据排错，不连续猜补丁",
+      "stage": 2,
+      "main_question": "你现在怀疑哪一步，观察什么能支持或推翻它？",
+      "student_activity": "先复现，再用日志或断点检验一个假设。",
+      "evidence_to_seek": "能说出观察和结论之间的关系。",
+      "common_misconception": "模型连续改了几次就说明已找到原因。",
+      "source_ids": [
+        "R26",
+        "R33"
+      ],
+      "method_ids": [
+        "guided-testing"
+      ],
+      "transfer_prompt": "同样报错但输入不同，你还会用同一个解释吗？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R26",
+        "R33"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L15",
+      "title": "修复后的回归与版本恢复",
+      "stage": 2,
+      "main_question": "修好了A，如何知道B没有一起坏？",
+      "student_activity": "先保护版本，再复测一个旧行为；必要时恢复并核对源码。",
+      "evidence_to_seek": "能区分代码恢复、数据变化和聊天记录。",
+      "common_misconception": "回退一定删除所有学习记录，或截图等于可恢复版本。",
+      "source_ids": [
+        "R35",
+        "R36"
+      ],
+      "method_ids": [
+        "guided-testing",
+        "code-review-diff"
+      ],
+      "transfer_prompt": "恢复旧代码后，哪些测试需要重新确认？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R35",
+        "R36"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L16",
+      "title": "把一次经历写成有边界的规则",
+      "stage": 2,
+      "main_question": "这条经验在什么时候有用，什么时候不能套用？",
+      "student_activity": "写适用条件、动作、证据和例外，先找相似旧项。",
+      "evidence_to_seek": "规则具体可检查，能保留修订来源。",
+      "common_misconception": "凡出过问题都要新增永久规则。",
+      "source_ids": [
+        "R01",
+        "R04",
+        "R37"
+      ],
+      "method_ids": [
+        "experience-distiller"
+      ],
+      "transfer_prompt": "换一个项目，保留规则的哪部分，删去哪部分？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R01",
+        "R04",
+        "R37"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L17",
+      "title": "网络请求不只有成功这一种结果",
+      "stage": 3,
+      "main_question": "断网、HTTP错误、空数据和超时分别给用户什么反馈？",
+      "student_activity": "用受控结果逐个检查；说明真实外部接口哪些尚未测。",
+      "evidence_to_seek": "区分请求完成与业务成功，保留实际观察。",
+      "common_misconception": "fetch返回了就一定成功，或本地模拟等于线上验收。",
+      "source_ids": [
+        "R20",
+        "R38"
+      ],
+      "method_ids": [
+        "safety-guard",
+        "guided-testing"
+      ],
+      "transfer_prompt": "重试一次提交会不会重复写入？你需要什么证据？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R20",
+        "R38"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L18",
+      "title": "密钥、输入和权限是不同的问题",
+      "stage": 3,
+      "main_question": "格式合法的请求，为什么也可能不该被允许？",
+      "student_activity": "在不展示秘密值的前提下检查凭据位置与操作权限。",
+      "evidence_to_seek": "能区分秘密保存、输入约束和授权。",
+      "common_misconception": "把密钥换个文件或做个输入检查就全部安全。",
+      "source_ids": [
+        "R39",
+        "R40",
+        "R43"
+      ],
+      "method_ids": [
+        "safety-guard"
+      ],
+      "transfer_prompt": "如果同样的操作来自另一个用户，服务器依据什么决定？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R39",
+        "R40",
+        "R43"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L19",
+      "title": "用键盘和清晰反馈检查可用性",
+      "stage": 3,
+      "main_question": "不用鼠标，能不能完成当前核心操作？",
+      "student_activity": "走一遍键盘路径、标签和错误修正，保留实际问题。",
+      "evidence_to_seek": "给出具体可复现操作，避免只凭视觉评价。",
+      "common_misconception": "无障碍只是给图片加一句描述。",
+      "source_ids": [
+        "R23",
+        "R24"
+      ],
+      "method_ids": [
+        "guided-testing"
+      ],
+      "transfer_prompt": "界面缩窄后，哪个步骤最容易失去反馈？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R23",
+        "R24"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L20",
+      "title": "向另一个人交付可运行作品",
+      "stage": 4,
+      "main_question": "别人没有你的电脑环境，还缺什么才能运行？",
+      "student_activity": "学生写运行条件、测试范围和限制，让别人按说明检查。",
+      "evidence_to_seek": "不把未执行或不同版本测试写成通过。",
+      "common_misconception": "上传文件就等于已经部署并验收。",
+      "source_ids": [
+        "R34",
+        "R35"
+      ],
+      "method_ids": [
+        "guided-testing",
+        "experience-distiller"
+      ],
+      "transfer_prompt": "如果只拿到ZIP，你会先检查哪三件事？",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R34",
+        "R35"
+      ],
+      "effectiveness_validated": false
+    },
+    {
+      "id": "L21",
+      "title": "离开现成答案做一次相邻迁移",
+      "stage": 4,
+      "main_question": "换一个相似场景，你能自行提出检查办法吗？",
+      "student_activity": "短暂不让Coding代办，让学生解释或设计一个小变化，再按需恢复帮助。",
+      "evidence_to_seek": "区分独立解释、提示后解释和作品运行；不自动认证掌握。",
+      "common_misconception": "重复教师原话、说懂了或作品跑通就代表掌握。",
+      "source_ids": [
+        "R03",
+        "R11",
+        "R12",
+        "R13",
+        "R15"
+      ],
+      "method_ids": [
+        "experience-distiller"
+      ],
+      "transfer_prompt": "用你自己的新项目说明一条旧经验的边界。",
+      "status": "original_candidate_not_student_validated",
+      "mandatory": false,
+      "mastery_certified": false,
+      "runtime_enabled": true,
+      "runtime_source_ids": [
+        "R01",
+        "R03",
+        "R04"
+      ],
+      "effectiveness_validated": false
+    }
+  ],
+  "runtime_revision": "teaching-20261114-v1"
+}

@@ -86,3 +86,7 @@ POST P/checkpoints/:checkpoint_id/revise 或resume：session_id/request_id/confi
 SQLite tasks保留任务原话、材料历史、代码版本和证据；student_libraries单独保存明确留存的本机经验。没有删除学生data或重排原始消息。任务锁串行修改；queued/needs_retry消息不进入当前Coding上下文或使当前执行过期。失败队列显式重试，服务重启标记进行中run失败。后台只合并本轮字段，过期结果拒绝采用。
 
 错误以JSON error返回，常用400输入/版本/忙状态，403非本机Host或跨站写入，404未知资源，413请求超过200000字节，422编码错误，500文件/数据库失败。异步模型/验证错误记录在run，不伪装完成。设置保存不等于模型可调用；真实质量需可用账户验收。
+
+## 筛选教学资料
+
+GET health增加teaching_library版本与课卡/来源数量。真实任务快照增加teaching_library（topics、preferences、suggested_lesson_ids、last_turn、sources）。POST P/teaching/resources接受lesson_id与choice=learn/later，或choice=auto；learn保存学生原话并异步请求教师，其他操作只保存偏好。最近turn.teaching_library保留实际提交的课卡、来源快照和版本；sample不标记已提交模型。详见[TEACHING_LIBRARY](TEACHING_LIBRARY.md)。

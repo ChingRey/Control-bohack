@@ -200,6 +200,7 @@ function renderDevelopmentPlan(){
 $('plan-confirm').onclick=()=>{confirmMode='plan';$('confirm').querySelector('p').textContent='先与教师讨论整体目标和拆分。确认后只保存计划，不执行代码。';$('confirm-run').textContent='确认计划';$('confirm').querySelector('h2').textContent='编辑并确认开发计划（每行一步）';$('instruction').value=(task.plan_draft||[]).join('\n');$('confirm').showModal()};
 $('restart-example').onclick=()=>{if(confirm('新建空白项目？当前记录会保留。'))perform(()=>api('/tasks',{coding_mode:'opencode'}))};
 function renderKnowledge(){
+ if(task.mode==='opencode'&&task.teaching_library&&typeof renderTeachingLibrary==='function'){renderTeachingLibrary();return}
  const course=task.teaching?.course||{},prefs=course.knowledge_preferences||{};const el=$('knowledge-topics');el.replaceChildren();
  const topics=task.knowledge_topics||{};
  Object.entries(topics).forEach(([id,topic])=>{const row=document.createElement('div');row.className='knowledge-topic';const label=document.createElement('span');label.textContent=topic.title+(prefs[id]==='later'?' · 稍后再学':prefs[id]==='learn'?' · 已选择':'');row.append(label);for(const [choice,title] of [['learn','学一下'],['later','稍后']]){const b=document.createElement('button');b.textContent=title;b.disabled=busy;b.onclick=()=>perform(()=>api('/tasks/'+task.id+'/teaching/knowledge',{topic:id,choice}));row.append(b)}el.append(row)});

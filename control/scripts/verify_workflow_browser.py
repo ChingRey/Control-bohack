@@ -53,6 +53,15 @@ def main():
   recovered=browser_runner.run({}, {},second,handler=Handler,screenshot=output/'workflow-restored.png',accept_dialogs=True)
   result['feature_and_restore_ui_passed']=recovered['passed'];result['passed']=result['passed'] and recovered['passed']
   if not recovered['passed']:result['recovery_failure']=recovered['results'][-1]
+  third=[{'action':'wait','ms':500},{'action':'assert_count','selector':'#teaching-library-choice option','count':21},
+   {'action':'fill','selector':'#teaching-library-choice','value':'L09'},{'action':'click','selector':'#teaching-library-learn'},
+   {'action':'wait','ms':1500},{'action':'click','selector':'#teaching-references summary'},
+   {'action':'assert_text','selector':'#teaching-reference-list','text':'localStorage'},
+   {'action':'assert_text','selector':'#teaching-reference-list','text':'未提交模型'},
+   {'action':'assert_exists','selector':'#teaching-reference-list a[href^="https://developer.mozilla.org/"]'}]
+  selected=browser_runner.run({}, {},third,handler=Handler,screenshot=output/'teaching-library-ui.png')
+  result['teaching_library_ui_passed']=selected['passed'];result['passed']=result['passed'] and selected['passed']
+  if not selected['passed']:result['teaching_library_failure']=selected['results'][-1]
   final=b.load(tid);result.update(kind='isolated_workbench_ui_acceptance',real_model=False,proposal_origin='test_fixture',materials_confirmed=bool(final['workflow']['materials']['requirements']),rule_count=len(wr.active_rules(final)),browser_record_count=len(final.get('browser_records',[])),delivery_prepared=bool(final.get('delivery_report')))
   (output/'workflow-ui.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
   print(json.dumps({k:v for k,v in result.items() if k not in ('results',)},ensure_ascii=False))
