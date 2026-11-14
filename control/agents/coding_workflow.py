@@ -114,3 +114,23 @@ def confirms_plan(text):
     import re
     text=re.sub(r'[\s。！!，,]+','',text)
     return text in ('确认计划','就按这个计划','按这个计划做','符合','符合我的期望','计划没问题','我确认了','确认了','我确认','确认','可以就这样','就这样吧','没问题')
+
+def phase_contract(task):
+    """Plan scope is backend-owned; model todos cannot advance this contract."""
+    import re
+    plan=task.get('plan',[]);index=task.get('step',0)
+    current=plan[index] if 0<=index<len(plan) else None
+    title=re.split(r'[：:]',current or '',maxsplit=1)[0].replace('**','')
+    review_only=bool(current and re.search(r'需求分析|需求澄清|梳理需求|讨论方案|确定.*(?:规则|机制|需求)',title))
+    checkpoints=state(task).get('checkpoints',[])
+    requires_file_change=bool(current and not review_only and re.search(r'创建|新建|写入|写文件|写代码|编写|修改|实现|开发|修复|添加|删除|重命名',current))
+    status=checkpoints[index]['status'] if index<len(checkpoints) else None
+    return {'plan_confirmed':bool(plan),'current_index':index,'current_title':current,
+        'requires_file_change':requires_file_change,
+        'execution_status':'executed' if status in ('executed_pending_review','accepted_by_student') else 'not_executed',
+        'acceptance_status':'accepted' if status=='accepted_by_student' else 'not_accepted',
+        'execution_mode':'review_only' if review_only else 'file_execution',
+        'current_status':checkpoints[index]['status'] if index<len(checkpoints) else None,
+        'accepted':[{'index':i,'title':x['title']} for i,x in enumerate(checkpoints) if x['status']=='accepted_by_student'],
+        'future':[{'index':i,'title':x} for i,x in enumerate(plan) if i>index],
+        'boundary':'仅处理current_title；future是后续安排，不是本阶段缺陷。模型轮次结束不代表学生验收通过。'}

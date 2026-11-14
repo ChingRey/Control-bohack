@@ -61,6 +61,19 @@ class ProjectFileExecutionTests(unittest.TestCase):
         self.assertEqual(task['coding_run']['status'],'failed');self.assertEqual(task['step'],0)
         self.assertFalse(any(m.get('content')=='所有文件已经完成' for m in task['messages']))
 
+    def test_actual_changes_with_failed_edit_are_saved_for_student_review(self):
+        def partial(files,packet,*args):
+            return {'text':'已写入，仍需检查。','files':{**files,'src/main.js':'const value = 1;'},
+                    'events':[{'part':{'tool':'edit','state':{'status':'error','error':'No changes to apply: oldString and newString are identical.'}}}]}
+        with patch.object(executor,'execute',side_effect=partial):
+            self.h.call(self.h.path+'/coding/messages',{'message':'按计划创建 src/main.js'})
+            task=self.h.wait()
+        self.assertEqual(task['coding_run']['status'],'completed')
+        self.assertEqual(task['step'],0)
+        self.assertEqual(task['coding_workflow']['checkpoints'][0]['status'],'executed_pending_review')
+        self.assertIn('src/main.js',b.read_project_files(task['id']))
+        self.assertEqual(task['messages'][-1]['execution_warnings'][0]['tool'],'edit')
+
     def test_explicit_discussion_stays_read_only(self):
         for instruction in ('先讨论如何创建 src/main.js，不要写代码','修改开发计划','如何创建JS文件？','请给出开发计划'):
             self.assertEqual(coding_workflow.message_intent(instruction),'discuss')

@@ -77,4 +77,22 @@ class ProviderTests(unittest.TestCase):
   with patch.dict(os.environ,{'TEACHING_PROVIDER':'openai','TEACHING_MODEL':'gpt-test','OPENAI_API_KEY':'test-key','TEACHING_ENDPOINT':'https://api.deepseek.com/chat/completions'},clear=True):
    self.assertEqual(providers.settings()['endpoint'],'https://api.openai.com/v1/responses')
 
+ def test_siliconflow_uses_own_key_fixed_endpoint_and_tools(self):
+  with patch.dict(os.environ,{'DEEPSEEK_API_KEY':'wrong-key'},clear=True):
+   providers.configure('siliconflow','fixture-silicon-key','zai-org/GLM-5.3')
+   os.environ['TEACHING_ENDPOINT']='https://api.deepseek.com/chat/completions'
+   config=providers.settings()
+   self.assertEqual(config['key'],'fixture-silicon-key')
+   self.assertEqual(config['endpoint'],'https://api.siliconflow.cn/v1/chat/completions')
+   req=providers.request(config,[{'role':'user','content':'read project'}],2600,teaching.tools(),json_mode=False)
+   data=json.loads(req.data)
+   self.assertEqual(data['model'],'zai-org/GLM-5.3');self.assertIn('tools',data)
+   self.assertNotIn('thinking',data);self.assertNotIn('response_format',data)
+   self.assertNotIn('fixture-silicon-key',json.dumps(providers.metadata(config,'model')))
+
+ def test_siliconflow_does_not_fall_back_to_another_provider_key(self):
+  with patch.dict(os.environ,{'TEACHING_PROVIDER':'siliconflow','DEEPSEEK_API_KEY':'wrong','TEACHING_API_KEY':'also-wrong'},clear=True):
+   config=providers.settings();self.assertEqual(config['key'],'')
+   with self.assertRaises(ValueError):providers.request(config,[],2600)
+
 if __name__=='__main__':unittest.main()
