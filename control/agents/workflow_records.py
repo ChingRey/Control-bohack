@@ -4,7 +4,7 @@ import json
 import re
 import time
 import uuid
-from . import workflow, providers, knowledge, project_safety, teaching_library
+from . import workflow, providers, knowledge, project_safety, teaching_library, model_limits
 
 CONCEPTS=['页面','事件','状态','条件','数据','存储','接口']
 def initialize(task):
@@ -69,7 +69,7 @@ def organize(task,progress=lambda *a:None):
  packet['teaching_resource_context']=teaching_library.organizer_context(task)
  system='你是只读项目材料整理器，不修改源码，不调用Coding，不替学生确认。根据有编号的原始对话整理待审核建议。不要抄秘密或编造引用；只根据本次材料推断，缺证据就不提出。需求和设计决定不是已验证经验；能力观察只是待核实建议。返回JSON {"items":[]}，最多6项。每项kind为requirements/design/experiences/coverage/learner/rule/concept/rule_observation；rule_observation需rule_id和outcome（followed/missed/uncertain），只记录本版本的待核实遵守情况，不证明行为正确；content为精简文本；evidence_ids为来源整数数组；quotes为[{"message_id":整数,"quote":"对应原话的完整连续片段"}]。rule额外有title/when/limits/replaces_id（修订同义旧规则时用其id，否则null），优先修订旧项而非堆叠同义项。concept额外有concept（页面/事件/状态/条件/数据/存储/接口）和level（explained/practiced/independent_candidate），不能认证已掌握。不要重复已经整理过的建议。'
  req=providers.request(config,[{'role':'system','content':system},{'role':'user','content':json.dumps(packet,ensure_ascii=False)}],3000,json_mode=True)
- response=providers.normalize(config,teaching.request_model(req,{'attempts':0,'deadline':time.monotonic()+120},progress))
+ response=providers.normalize(config,teaching.request_model(req,model_limits.budget('background'),progress))
  text=response['choices'][0]['message'].get('content','').strip()
  if text.startswith('```'):text=text.split('\n',1)[1].rsplit('```',1)[0]
  rows=candidates(task,json.loads(text),[m['id'] for m in selected])

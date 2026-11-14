@@ -112,3 +112,14 @@ body.resizing textarea{pointer-events:none}
 .flow-navigation{display:grid;gap:5px;padding:10px;border-bottom:1px solid #344252;flex-shrink:0}.flow-navigation button{text-align:left;padding:8px 10px;font-size:12px}.sidebar-collapsed .flow-navigation{display:none}
 
 #knowledge-topics select{width:100%;font-size:11px;margin:8px 0}#knowledge-topics .library-note{font-size:11px;line-height:1.5;color:#aebdcd}#teaching-references{margin:0 14px 10px;font-size:11px;color:#b9cce0}#teaching-reference-list{max-height:220px;overflow:auto;overflow-wrap:anywhere}#teaching-reference-list a{color:#a8d0f2}
+
+#experience-dialog .experience-auto-option{display:flex;align-items:center;gap:8px;margin:12px 0}#experience-dialog .experience-auto-option input{width:auto;margin:0}#experience-dialog details{margin:8px 0}#experience-dialog p{overflow-wrap:anywhere}
+
+/* Teaching sidebar is chat-only; auxiliary controls live in Settings. */
+.teaching{grid-template-rows:minmax(0,1fr);gap:0;padding:10px}
+.teaching>.teacher-dialog{grid-row:1}
+#settings-dialog{max-height:88vh;overflow:auto}
+#teaching-tools-settings{margin:14px 0;padding:10px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+#teaching-tools-settings>summary{cursor:pointer;padding:6px 0}
+#teaching-tools-settings .teaching-overview{overflow:visible}
+#teaching-tools-settings .teacher-head{flex-wrap:wrap}

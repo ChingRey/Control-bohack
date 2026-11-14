@@ -26,4 +26,28 @@ class PlanChoiceTests(unittest.TestCase):
   for message in ('我确认了','直接写文件','按这个计划开始做吧'):
    with patch.object(b,'start_coding') as run:
     code,t=self.h.call(self.h.path+'/coding/messages',{'message':message})
-   self.assertEqual(code,200);run.assert_not_called();self.assertEqual(t['plan'],[])
+   self.assertEqual(code,202);self.assertTrue(run.call_args.kwargs.get('planning'));self.assertEqual(t['plan'],[])
+
+ def test_queued_draft_feedback_revises_instead_of_repeating_choice_prompt(self):
+  calls=[]
+  def execute(files,payload,*args):
+   calls.append(payload)
+   return {'text':'开发计划：\n1. 创建计分页面\n2. 实现30秒计时','files':files,'events':[]}
+  with patch.object(b.opencode_executor,'execute',side_effect=execute):
+   code,_=self.h.call(self.h.path+'/chat/send',{'channel':'coding','message':'去掉音效，第一版只要计分和30秒倒计时','request_id':'plain-revision'})
+   self.assertEqual(code,202);t=self.h.wait()
+  self.assertEqual(t['plan'],[]);self.assertEqual(t['plan_draft'],['创建计分页面','实现30秒计时'])
+  self.assertEqual(calls[0]['interaction_mode'],'planning')
+  self.assertNotIn('选择 ✓',t['messages'][-1]['content'])
+
+ def test_generic_checkmark_acknowledges_reply_without_approving_phase(self):
+  t=b.load(self.h.task['id']);t['plan_draft']=[];b.save(t)
+  index=max(i for i,m in enumerate(t['messages']) if m.get('channel')=='coding' and m.get('role')=='assistant')
+  body={'message_id':index,'expected_content':t['messages'][index]['content'],'request_id':'reply-check'}
+  self.assertEqual(self.h.call(self.h.path+'/coding/reply-accept',body)[0],200)
+  self.assertEqual(self.h.call(self.h.path+'/coding/reply-accept',body)[0],200)
+  t=b.load(t['id']);self.assertEqual(len(t['coding_reply_acceptances']),1);self.assertEqual(t['plan'],[])
+
+ def test_generic_checkmark_cannot_bypass_plan_approval(self):
+  t=b.load(self.h.task['id']);index=max(i for i,m in enumerate(t['messages']) if m.get('channel')=='coding' and m.get('role')=='assistant')
+  self.assertEqual(self.h.call(self.h.path+'/coding/reply-accept',{'message_id':index,'expected_content':t['messages'][index]['content'],'request_id':'wrong-kind'})[0],400)

@@ -1,3 +1,7 @@
+# 教学经验进化初版（2026-11-14）
+
+新增Reflexion/ACE式项目内教学经验闭环：初始经验、独立六维评价、有证据的反思、增量候选、下一轮检索、停用与版本恢复。顶部“设置 → 教学工具与经验 → 教学反思与经验库”可查看管理，右侧仅保留聊天。规则、API与验证边界见 [TEACHING_EVOLUTION](docs/TEACHING_EVOLUTION.md)。旧 teaching/evolve 仍为Mock兼容端口，新闭环使用 teaching/experience-review。未验证真实教学提升。以下为历史交接记录，以本段和当前代码为准。
+
 # 硅基流动双模型接入补充（2026-11-14）
 
 已融合用户双模型API交接包：Coding和Teaching均可选择硅基流动，默认模型分别沿用包中的Qwen/Qwen3-Coder-30B-A3B-Instruct与zai-org/GLM-5.3。保留按需教学资料和只读Teacher；两侧分别填写Key，保存不等于真实调用已验证。见docs/SILICONFLOW_API.md。
