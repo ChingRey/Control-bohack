@@ -54,7 +54,7 @@ def main():
   result['feature_and_restore_ui_passed']=recovered['passed'];result['passed']=result['passed'] and recovered['passed']
   if not recovered['passed']:result['recovery_failure']=recovered['results'][-1]
   third=[{'action':'wait','ms':500},{'action':'assert_count','selector':'#teaching-library-choice option','count':21},
-   {'action':'click','selector':'#open-settings'},{'action':'click','selector':'#teaching-tools-settings > summary'},{'action':'click','selector':'#open-lesson-cards'},
+   {'action':'click','selector':'#project-tools-open'},{'action':'click','selector':'#teaching-tools-settings > summary'},{'action':'click','selector':'#open-lesson-cards'},
    {'action':'wait','ms':500},
    {'action':'assert_exists','selector':'#lesson-card-dialog[open] section'},
    {'action':'click','selector':'#lesson-card-dialog button:last-child'},{'action':'click','selector':'#close-settings'},

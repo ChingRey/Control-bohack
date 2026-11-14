@@ -1,17 +1,18 @@
 """Structured application experiment. Backend owns stages and evidence."""
-from . import benchmark as b, rubric, experiment_decide, teach
+from . import benchmark as b, rubric, experiment_decide, teach, benchmark_registry
 from uuid import uuid4
 
 
 def create(task, learner_id, cohort, arm):
+    suite=benchmark_registry.get(task.get('benchmark_version'))
     return {
         'id':uuid4().hex, 'task_id':task['id'],
         'project':{'title':task['title'],'plan':list(task['plan']),
                    'checkpoint_id':task['benchmark_checkpoint_id']},
         'learner_id':learner_id, 'cohort':cohort, 'arm':arm,
         'stage':'pre','revision':0,'evidence':{},'evaluations':{},'events':[],
-        'skill_id':b.SKILL,'topic':b.TOPIC,'task_type':b.TASK_TYPE,'difficulty':b.DIFFICULTY,
-        'benchmark_version':b.VERSION,'mastery_threshold':b.threshold(),
+        'skill_id':suite.SKILL,'topic':suite.TOPIC,'task_type':suite.TASK_TYPE,'difficulty':suite.DIFFICULTY,
+        'benchmark_version':suite.VERSION,'mastery_threshold':b.threshold(),
     }
 
 
@@ -22,8 +23,9 @@ def apply(s, submitted, choose, personal):
     if submitted.get('stage') != stage or submitted.get('revision') != s.get('revision',0):
         raise ValueError('考核阶段已变化，请刷新后重新提交')
     hints=max((event['hint_level'] for event in s['events'] if event['phase']!='independent'),default=0)
-    obs=b.observe(s['id'],stage,submitted,hints if stage=='practice' else 0)
-    if not obs['answers'] and not any(v is not None for v in obs['predictions']):
+    suite=benchmark_registry.get(s['benchmark_version'])
+    obs=suite.observe(s['id'],stage,submitted,hints if stage=='practice' else 0)
+    if not obs['answers'] and not obs['checks'] and not any(v is not None for v in obs['predictions']):
         raise ValueError('请至少提交一项可观察的作答')
     result=rubric.evaluate(obs, minimum=s['mastery_threshold'],
                                          linked_turn=s['events'][-1]['id'] if s['events'] else None)
@@ -31,7 +33,7 @@ def apply(s, submitted, choose, personal):
     s['evaluations'].setdefault(stage,[]).append(result)
     if stage=='pre':
         if result['core_score'] is None:
-            raise ValueError('前测需填写全部标准问题与前三项预期')
+            raise ValueError('前测需填写全部标准问题与前三项预期' if suite is b else '前测需填写标准问题及至少一条测试用例')
         s['student_level']='novice' if result['core_score']<75 else 'ready'
         strategy, reason, validated=choose(s)
         s['decision']=experiment_decide.choose(s,result,personal,validated)
@@ -55,16 +57,18 @@ def apply(s, submitted, choose, personal):
 
 def view(s):
     data={k:s[k] for k in ('id','stage','cohort','arm','benchmark_version')}
+    suite=benchmark_registry.get(s['benchmark_version'])
+    data['benchmark_title']=getattr(suite,'TITLE','表单输入边界')
     data['revision']=s.get('revision',0)
     if s['stage'] in ('practice','complete'):
         data['events']=s['events']
     if s['stage']!='complete':
-        data['form']=b.form(s['stage'])
+        data['form']=suite.form(s['stage'])
     if 'decision' in s:
         data['decision']=s['decision']
         data['checkpoint_id']=s['project'].get('checkpoint_id')
     if s['stage']=='practice':
-        data['feedback']=[{'weaknesses':e['weaknesses'],'missing':e['missing'],'evaluation_id':e['evaluation_id']}
+        data['feedback']=[{'weaknesses':e['weaknesses'],'missing':e['missing'],'case_gaps':e.get('case_gaps',[]),'evaluation_id':e['evaluation_id']}
                           for e in s['evaluations'].get('practice',[])]
         data['practice_checks']=[obs['checks'] for obs in s['evidence'].get('practice',[])]
     if s['stage']=='complete':

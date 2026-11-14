@@ -112,3 +112,24 @@
   #evolution-dialog .ev-story > li { padding-left:4px; }
   .ev-results-table th,.ev-results-table td { padding:4px 3px; }
 }
+
+.ev-sim-controls { margin:12px 0; padding:10px 12px; background:var(--ev-tint); border-radius:8px; }
+.ev-sim-controls progress { width:100%; accent-color:var(--ev-green); }
+.ev-version-definition { margin:0 0 8px; }
+.ev-map { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin:8px 0 14px; }
+.ev-map > div { padding:8px; border:1px solid var(--ev-rule); border-radius:7px; }
+.ev-map b { display:block; color:var(--ev-green); }
+.ev-participant label { display:flex !important; align-items:center; gap:8px; }
+.ev-participant select { width:auto; }
+@media(max-width:630px) { .ev-map { grid-template-columns:1fr; } }
+
+#evolution-dialog .ev-form textarea {
+  resize:vertical;
+  background:white;
+  color:var(--ev-ink);
+  border-color:var(--ev-rule);
+  font:14px/1.5 Consolas,monospace;
+}
+
+#evolution-dialog .ev-sim-controls input { width:7rem; }
+#ev-sim-recent { font-size:13px; line-height:1.6; }

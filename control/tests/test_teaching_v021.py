@@ -11,7 +11,7 @@ import test_checkpoints as fixture
 class V021IntegrationTests(unittest.TestCase):
  def setUp(self):
   self.h=fixture.CheckpointIntegrationTests();self.h.setUp();self.addCleanup(self.h.doCleanups)
-  self.env=patch.dict(os.environ,{'CONTROL_V021_ACCESS_TOKEN':'test-operator-token'});self.env.start();self.addCleanup(self.env.stop)
+  self.env=patch.dict(os.environ,{'CONTROL_V021_ACCESS_TOKEN':'test-operator-token','CONTROL_ENABLE_DEV_INTEGRATION':'1'});self.env.start();self.addCleanup(self.env.stop)
   task=b.load(self.h.task['id']);task['checkpoint_delivery']='manual';task['plan'].append('添加购物车');task['coding_workflow']['checkpoints'].append({'index':1,'title':'添加购物车','status':'pending'});b.save(task)
   with patch.object(executor,'execute',side_effect=self.h.execute):
    code,_=self.h.call(self.h.path+'/steps/run',{'confirmed':True,'expected_step':0,'instruction':'创建商品列表'})

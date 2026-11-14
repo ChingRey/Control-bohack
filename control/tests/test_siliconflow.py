@@ -82,3 +82,13 @@ class SiliconFlowAPITests(unittest.TestCase):
   with patch.dict(os.environ,{},clear=True):
    self.assertEqual(self.h.call('/api/settings/teaching',{'provider':'siliconflow','api_key':'invalid\nkey','model':'zai-org/GLM-5.3'})[0],403)
    self.assertNotIn('SILICONFLOW_API_KEY',os.environ);self.assertNotIn('TEACHING_PROVIDER',os.environ)
+
+ def test_shared_demo_keeps_browser_model_configuration_read_only(self):
+  import backend
+  with patch.object(backend,'PUBLIC_HOST','192.168.1.10'):
+   status,health=self.h.call('/api/health')
+   self.assertEqual(status,200)
+   self.assertFalse(health['local_model_settings'])
+   for agent in ('teaching','coding'):
+    status,_=self.h.call('/api/settings/'+agent,{'api_key':'fixture-key','model':'fixture-model'})
+    self.assertEqual(status,403)

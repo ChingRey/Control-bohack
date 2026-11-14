@@ -452,7 +452,7 @@
         {
           "path": "agents/teach.py",
           "section": "ADAPT knowledge/judgment",
-          "sha256": "987174b7c11a72e8c121e671e1a40faaca43b9ed536b049b3c0416a975b45213"
+          "sha256": "43bfc81aa6751ccb7b73e96a6c3d45b5277a2568170bd859c10094b812575ba7"
         }
       ],
       "rationale": "把不同结果归到一个明确条件，减少概念替换。",
@@ -500,7 +500,7 @@
         {
           "path": "agents/teach.py",
           "section": "BASE sequence observe；对当前项目泛化",
-          "sha256": "987174b7c11a72e8c121e671e1a40faaca43b9ed536b049b3c0416a975b45213"
+          "sha256": "43bfc81aa6751ccb7b73e96a6c3d45b5277a2568170bd859c10094b812575ba7"
         }
       ],
       "rationale": "把直觉与可核实结果联系，而不是只听老师结论。",

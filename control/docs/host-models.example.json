@@ -1,0 +1,13 @@
+{
+  "teaching": {
+    "provider": "siliconflow",
+    "model": "zai-org/GLM-5.3-Flash",
+    "api_key": "YOUR_TEACHING_API_KEY"
+  },
+  "coding": {
+    "provider": "siliconflow",
+    "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+    "api_key": "YOUR_CODING_API_KEY",
+    "region": "cn"
+  }
+}

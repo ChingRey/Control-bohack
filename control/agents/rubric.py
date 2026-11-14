@@ -1,6 +1,6 @@
 """Deterministic rubric over benchmark evidence; ordinary chat remains provisional."""
 from uuid import NAMESPACE_URL, uuid5
-from . import benchmark as b
+from . import benchmark as b, benchmark_registry
 
 
 def _score(keys, obs, standards, advanced=None):
@@ -18,6 +18,9 @@ def _score(keys, obs, standards, advanced=None):
 
 
 def marks(obs):
+    suite=benchmark_registry.get(obs['benchmark_version'])
+    if suite is not b:
+        return suite.marks(obs,_score)
     picks = obs['answers']
     right = {k: picks.get(k) == answer for k,answer in b.EXPECTED.items()}
     predictions = obs['predictions']
@@ -41,9 +44,10 @@ def marks(obs):
 
 
 def evaluate(obs, transfer=None, minimum=None, linked_turn=None):
+    suite=benchmark_registry.get(obs['benchmark_version'])
     levels = marks(obs)
     if transfer is not None:
-        if obs['stage'] != 'post' or transfer['stage'] != 'transfer':
+        if obs['stage'] != 'post' or transfer['stage'] != 'transfer' or obs['benchmark_version']!=transfer['benchmark_version']:
             raise ValueError('迁移证据必须关联独立后测')
         levels.update(marks(transfer))
     scores = {}
@@ -51,6 +55,8 @@ def evaluate(obs, transfer=None, minimum=None, linked_turn=None):
         row = transfer if key == 'transfer' and transfer is not None else obs
         scores[key] = {'level': level, 'weighted': None if level is None else b.DIMENSIONS[key][1]*level/4,
                        'evidence_ids': [] if level is None else [row['id']],
+                       'reasons':suite.explain(row,key) if hasattr(suite,'explain') else [],
+                       'observations': row.get('case_gaps',[]) if key in ('verification','transfer') else [],
                        'anchor': ('未观察到' if level is None else
                                   f'有 H{row["hint_level"]} 提示；按提示上限记分' if level>0 and row['hint_level'] else b.ANCHORS[level])}
     total = sum(item['weighted'] for item in scores.values() if item['weighted'] is not None)
@@ -58,18 +64,19 @@ def evaluate(obs, transfer=None, minimum=None, linked_turn=None):
     core_values = [scores.get(k,{}).get('level') for k in ('knowledge','judgment','ai_collaboration','verification')]
     core = round(sum(scores[k]['weighted'] for k in ('knowledge','judgment','ai_collaboration','verification')) * 100/85, 2) if all(v is not None for v in core_values) else None
     transfer_ok = transfer is not None and (levels.get('transfer') or 0) >= 3 and transfer['hint_level'] == 0
-    test_ok = bool(obs['checks']) and all(x['passed'] for x in obs['checks'])
+    test_ok = (bool(obs['checks']) and all(x['passed'] for x in obs['checks'])) if suite is b else suite.test_passed(obs)
     mastery_line = b.threshold() if minimum is None else minimum
     mastered = full and total >= mastery_line and test_ok and transfer_ok and (levels.get('verification') or 0)>=3 and obs['hint_level']==0
     return {
         'evaluation_id': 'ev-'+uuid5(NAMESPACE_URL, obs['id']+(':'+transfer['id'] if transfer else '')).hex,
-        'turn_id': linked_turn, 'skill_id': b.SKILL, 'benchmark_version': b.VERSION,
+        'turn_id': linked_turn, 'skill_id': suite.SKILL, 'benchmark_version': suite.VERSION,
         'scores': scores, 'total_score': round(total,2) if full else None, 'core_score': core,
         'mastery_level': 'mastered' if mastered else 'developing' if full else 'insufficient_evidence',
         'mastered': mastered, 'weaknesses': [k for k,v in levels.items() if v is not None and v<3],
         'missing': [k for k in b.DIMENSIONS if levels.get(k) is None],
         'evidence_ids': [obs['id']]+([transfer['id']] if transfer else []),
         'assistance_summary': {'hint_level': obs['hint_level'], 'transfer_hint_level': transfer['hint_level'] if transfer else None},
+        'case_gaps':obs.get('case_gaps',[]),
         'evidence_sufficiency': 'sufficient' if full else 'insufficient_evidence',
         'confidence': 'fixed_benchmark_only', 'test_passed':test_ok,'transfer_passed': transfer_ok,
         'mastery_threshold': mastery_line,
