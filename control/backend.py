@@ -496,6 +496,10 @@ class Handler(BaseHTTPRequestHandler):
   try:
    parts=urlparse(self.path).path.strip('/').split('/')
    if parts==['api','health']: return self.reply(200,{'coding_mode':'sample_or_opencode','coding':opencode_executor.metadata(),'teaching':teaching.TeachingAgent().metadata(),'teaching_library':teaching_library.metadata(),'storage':'sqlite'})
+   if len(parts)==4 and parts[:3]==['api','teaching','library']:
+    data=teaching_library.catalog();card=next((c for c in data['lessons'] if c['id']==parts[3]),None)
+    if card is None:return self.reply(404,{'error':'课卡不存在'})
+    return self.reply(200,{'lesson':card,'revision':data['revision'],'sources':[s for s in data['sources'] if s['id'] in card['source_ids']]})
    if parts==['api','students']:
     with connection() as c:rows=c.execute('SELECT body FROM student_libraries').fetchall()
     return self.reply(200,[{k:r[k] for k in ('id','name','revision')} for (body,) in rows for r in [json.loads(body)]])
