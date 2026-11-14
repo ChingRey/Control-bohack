@@ -99,3 +99,15 @@ Teaching新增provider=siliconflow，固定https://api.siliconflow.cn/v1/chat/co
 ## 独立 TeachingService V0.2.1
 
 `/api/tasks/:id/teaching-v021` 为显式启用的独立联调接口，采用规则选课和 Mock 教学、评价、演化。学生可在选课结果为跳过教学时确认继续开发。会话、证据、历史、策略授权和暂停恢复见 [V0.2.1 接口交接说明](TEACHING_V021_INTEGRATION.md)。
+
+## 项目内教学经验与反思（2026-11-14新增）
+
+`POST P/teaching/experience-review` 异步评价新交互并生成增量反思，真实模型缺失时失败，不切Mock。`POST P/teaching/experience-manage` 必须带expected_revision，action=options/status/restore；控制工作模式、条目状态和历史恢复。GET P返回teaching_evolution及experience_run。原teaching/evolve仍是兼容Mock，不承载新闭环。完整规则和字段见TEACHING_EVOLUTION.md。
+
+## 对勾与直接修改
+
+Coding最新回复仅显示✓；无需✕。草稿阶段普通文字重新修订计划，不授权写文件；待验收阶段普通文字通过检查点revise返工当前阶段，不推进step。✓计划确认及阶段验收沿用原结构化接口。普通讨论回复的 `POST P/coding/reply-accept` 使用message_id、expected_content、request_id，只记录认可，不推进阶段；禁止替代计划批准/阶段验收，支持幂等。
+
+## 模型超时与后台快照版本
+
+GET /api/health包含background_revision=snapshot-v2及model_timeouts。POST /api/settings/timeouts为前台/后台各自设置request_seconds及total_seconds（完整字段见TEACHING_EVOLUTION.md），只影响下一次任务，持久化到无密钥配置文件。后台批次在原话保持不变时允许追加聊天和修改代码；来源冲突或经验版本冲突保留结果不覆盖。失败保存真实错误码、请求耗时和已完成步骤。

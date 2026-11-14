@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
-from agents import workflow_records, project_safety, project_delivery, student_library, project_runner, project_runtime, teaching_library, workflow, teaching_sessions, evolution_port, skill_gateway, teaching_bridge, teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor, code_refs, project_files, checkpoint_control, checkpoints as checkpoint_events
+from agents import model_limits, teaching_evolution, workflow_records, project_safety, project_delivery, student_library, project_runner, project_runtime, teaching_library, workflow, teaching_sessions, evolution_port, skill_gateway, teaching_bridge, teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor, code_refs, project_files, checkpoint_control, checkpoints as checkpoint_events
 from agents.coding import PLAN, FILES, SampleCodingAgent
 from agents import teaching_v021
 
@@ -102,6 +102,7 @@ def snapshot(t):
  t['coding_provider']={'framework':'opencode' if t.get('mode')=='opencode' else 'sample',**opencode_executor.metadata()}
  t['teaching_provider'] = teaching.TeachingAgent().metadata()
  teaching.state(t)
+ t['experience_run']=teaching_evolution.state(t)['run']
  t['knowledge_topics']=teaching.KNOWLEDGE
  if t.get('mode')=='opencode':t['teaching_library']=teaching_library.view(t)
  t['learning_overview']={'profile':learning.profile(t),'skills':learning.readiness(t)}
@@ -113,6 +114,8 @@ def snapshot(t):
 def task_signature(t):
  fields=('messages','changes','plan','plan_draft','step','teaching','checks','runtime_observations','workflow')
  values={key:t.get(key) for key in fields}
+ # Background proposals are additive suggestions, not foreground execution inputs.
+ if isinstance(values.get('workflow'),dict):values['workflow']={k:v for k,v in values['workflow'].items() if k!='proposals'}
  values['messages']=[m for m in t.get('messages',[]) if m.get('queue_status') not in ('queued','needs_retry')]
  return json.dumps(values,sort_keys=True,ensure_ascii=False)
 
@@ -179,7 +182,12 @@ def start_teaching(t, action='message'):
    with task_lock(work['id']):
     fresh=load(work['id'])
     if fresh.get('teaching_run',{}).get('id')!=job['id']: raise ValueError('本次教师任务已被替换')
-    fresh['teaching_run'].update(status='running',stage=stage,detail=detail)
+    if stage=='request_trace':
+     trace=fresh['teaching_run'].setdefault('request_trace',[])
+     row=next((r for r in trace if r['attempt']==detail['attempt']),None)
+     if row is None:trace.append(dict(detail))
+     else:row.update(detail)
+    else:fresh['teaching_run'].update(status='running',stage=stage,detail=detail)
     save(fresh)
   try:
    progress('reading','正在读取当前代码与学习记录')
@@ -204,6 +212,8 @@ def start_teaching(t, action='message'):
      if entry.get('channel')=='teaching' and entry.get('role')=='assistant':entry['code_refs']=code_refs.collect(entry['content'],source_files or {})
     fresh['messages'].extend(work['messages'][base_count:])
     fresh['teaching']=work['teaching']
+    if fresh['teaching']['turns']:
+     teaching_evolution.record_load(fresh,fresh['teaching']['turns'][-1],len(fresh['messages'])-1)
    if not stale and result['status']=='failed' and work['teaching']['memory']['revision']>fresh['teaching']['memory']['revision']:
     fresh['teaching']['memory']=work['teaching']['memory']
    if job.get('checkpoint_id'):
@@ -221,6 +231,13 @@ def start_teaching(t, action='message'):
     try:start_organizer(latest)
     except ValueError:pass
   drain_chat(work['id'])
+  with task_lock(work['id']):
+   try:latest=load(work['id'])
+   except ValueError:return
+   es=teaching_evolution.state(latest)
+   if result['status']=='completed' and es['auto'] and es['mode']!='off' and teaching.TeachingAgent().mode=='model' and teaching_evolution.pending(latest):
+    try:start_experience_review(latest)
+    except ValueError:pass
  threading.Thread(target=worker,daemon=True).start()
 
 def start_checkpoint_teaching(t):
@@ -281,7 +298,8 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
   packet['execution_boundary']='仅执行authorized_phase；不得推进其他阶段，不得修改已确认计划。完成后停止等待学生检查。'
  if planning:
   packet['authorized_phase']=None
-  packet['execution_boundary']='本轮只生成开发计划草稿，输出计划后暂停等待学生确认；禁止创建文件、执行实现或宣称开发完成。'
+  packet['execution_boundary']='本轮只生成或修订开发计划草稿，按学生最新意见修订已有草稿；回复以开发计划为标题并用1. 2.编号给出完整阶段。输出后等待学生点击✓确认；禁止创建文件、执行实现或宣称开发完成。'
+  packet['current_plan_draft']=t.get('plan_draft',[])
   packet['student_message']=instruction
  if chatting:
   packet={'student_message':instruction,'learning_context':packet['learning_context'],'project_knowledge':knowledge_context,'locked_plan':bool(t.get('plan')),'authorized_phase':t['plan'][t['step']] if t.get('plan') and t['step']<len(t['plan']) else None}
@@ -393,7 +411,7 @@ def start_verification(t,kind,body):
  threading.Thread(target=worker,daemon=True).start()
 
 def task_busy(t):
- return any(t.get(k,{}).get('status') in ('queued','running') for k in ('coding_run','teaching_run','organizer_run','verification_run'))
+ return any(t.get(k,{}).get('status') in ('queued','running') for k in ('coding_run','teaching_run','verification_run'))
 
 def finish_queue_request(tid,field,job_id):
  with task_lock(tid):
@@ -426,16 +444,7 @@ def drain_chat(tid):
   try:
    if row['channel']=='teaching':start_teaching(t)
    elif t.get('mode')=='opencode':
-    instruction=row['content'];intent=coding_workflow.message_intent(instruction)
-    needs_plan=not t.get('plan') and workflow_records.initialize(t)['mode']!='free'
-    if needs_plan and t.get('plan_draft') and (intent=='execute' or coding_workflow.confirms_plan(instruction)):
-     t.pop('_queue_launch_id',None)
-     message(t,'coding','assistant','请在聊天里的计划下选择 ✓ 可以，开始 或 ✕ 不行，继续修改。');save(t)
-     threading.Thread(target=drain_chat,args=(tid,),daemon=True).start()
-    else:
-     planning=needs_plan and (intent=='execute' or bool(re.search(r'做|小游戏|网站|网页|应用|计划',instruction)))
-     if intent=='execute' and t.get('plan') and t['step']>=len(t['plan']):raise ValueError('计划已全部验收，请先开始新任务')
-     start_coding(t,instruction,planning=planning,chatting=not planning and intent!='execute')
+    dispatch_coding_message(t,row['content'],row['request_id'])
    else:
     t.pop('_queue_launch_id',None)
     message(t,'coding','assistant','示例模式不执行任意开发指令，请连接Coding模型。');save(t)
@@ -443,22 +452,179 @@ def drain_chat(tid):
   except Exception:
    row['queue_status']='needs_retry';save(t)
 
+
+def dispatch_coding_message(t, text, request_id=None):
+ # Only the structured checkmark endpoints approve. All draft feedback revises the draft.
+ if not t.get('plan') and t.get('plan_draft'):
+  t.pop('plan_decision',None)
+  start_coding(t,text,planning=True)
+  return
+ pending=coding_workflow.phase_contract(t).get('current_status')=='executed_pending_review'
+ if pending and t.get('coding_checkpoints'):
+  checkpoint=t['coding_checkpoints'][-1]
+  if checkpoint.get('kind')=='development' and checkpoint.get('stage_index')==t['step']:
+   token='chat-'+uuid.uuid5(uuid.NAMESPACE_URL,t['id']+str(request_id or uuid.uuid4())).hex
+   checkpoint_command(t,checkpoint['checkpoint_id'],'revise',{
+    'session_id':t['id'],'request_id':token,'confirmed':True,'instruction':text,
+    'expected_code_hash':knowledge.code_hash(read_project_files(t['id']))})
+   return
+ intent=coding_workflow.message_intent(text)
+ needs_plan=not t.get('plan') and workflow_records.initialize(t)['mode']!='free'
+ planning=needs_plan and (intent=='execute' or bool(re.search(r'做|小游戏|网站|网页|应用|计划',text)))
+ if intent=='execute' and t.get('plan') and t['step']>=len(t['plan']):
+  raise ValueError('计划已全部验收，请先开始新任务')
+ start_coding(t,text,planning=planning,chatting=not planning and intent!='execute')
+
+
+def accept_coding_reply(t, body):
+ index=body.get('message_id');request_id=body.get('request_id')
+ if type(index) is not int or not isinstance(request_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,120}',request_id):
+  raise ValueError('回复确认参数无效')
+ acknowledgements=t.setdefault('coding_reply_acceptances',[])
+ previous=next((r for r in acknowledgements if r['request_id']==request_id),None)
+ if previous:
+  if previous['message_id']!=index or previous['content']!=body.get('expected_content'):raise ValueError('确认请求编号冲突')
+  return
+ latest=next((i for i in range(len(t['messages'])-1,-1,-1) if t['messages'][i].get('channel')=='coding' and t['messages'][i].get('role')=='assistant'),None)
+ if latest!=index or t['messages'][index].get('content')!=body.get('expected_content'):
+  raise ValueError('回复已变化，请确认最新回复')
+ if (not t.get('plan') and t.get('plan_draft')) or coding_workflow.phase_contract(t).get('current_status')=='executed_pending_review':
+  raise ValueError('当前应确认计划或验收阶段，请刷新后使用对应对勾')
+ acknowledgements.append({'request_id':request_id,'message_id':index,'content':body['expected_content'],'kind':'reply_acknowledgement_not_phase_acceptance'})
+
+
+def background_error(exc):
+ # Preserve actual failure category; no request bodies, headers or provider credentials.
+ import socket
+ from urllib.error import HTTPError, URLError
+ cause=exc.reason if isinstance(exc,URLError) else exc
+ if isinstance(exc,HTTPError):return {'error_code':'provider_http','error':'模型服务返回HTTP '+str(exc.code),'http_status':exc.code}
+ if isinstance(cause,(TimeoutError,socket.timeout)):return {'error_code':'provider_timeout','error':'模型请求超时；原话和已完成步骤保留，可重试'}
+ if isinstance(exc,URLError):return {'error_code':'provider_connection','error':'模型连接失败；原话和已完成步骤保留，可重试'}
+ if isinstance(exc,json.JSONDecodeError):return {'error_code':'invalid_json','error':'模型未返回有效JSON，未采用未校验内容'}
+ if isinstance(exc,ValueError):return {'error_code':'validation_failed','error':redact_message(str(exc))[:300]}
+ return {'error_code':'internal_error','error':'后台处理异常（'+type(exc).__name__+'），原记录保留'}
+
+
+def archive_background_run(task, kind, run):
+ records=task.setdefault('background_run_history',[])
+ records.append({'kind':kind,**json.loads(json.dumps(run))})
+ # Full live results/reviews stay in their own namespace; recent operational runs are bounded.
+ del records[:-50]
+
+
+def background_sources_match(fresh, rows):
+ # Appended conversation/code edits are valid: only the consumed immutable text must still match.
+ messages=fresh.get('messages',[])
+ return all(0<=m['id']<len(messages) and all(messages[m['id']].get(k)==m.get(k) for k in ('role','channel','content')) for m in rows)
+
+
 def start_organizer(t):
- if task_busy(t):raise ValueError('当前任务仍在执行，整理可稍后重试')
- run={'id':str(uuid.uuid4()),'status':'running','started_at':time.time()};t['organizer_run']=run;save(t)
- work=json.loads(json.dumps(t));baseline=task_signature(t)
+ if t.get('organizer_run',{}).get('status')=='running':raise ValueError('材料整理已在后台运行')
+ run={'id':str(uuid.uuid4()),'status':'running','stage':'organizing','started_at':time.time(),'source_message_count':len(t['messages'])};t['organizer_run']=run;save(t)
+ work=json.loads(json.dumps(t))
+ prior_ids={p['id'] for p in workflow_records.initialize(work)['proposals']}
+ source_rows=teaching_evolution.eligible(work)
  def worker():
+  new_proposals=[]
   try:
-   workflow_records.organize(work);result={'status':'completed','detail':'已生成待审核材料，尚未启用'}
-  except Exception as e:result={'status':'failed','detail':project_safety.redact(str(e))[:300] if isinstance(e,ValueError) else '材料整理失败，原话及现有材料已保留'}
+   workflow_records.organize(work)
+   new_proposals=[p for p in workflow_records.initialize(work)['proposals'] if p['id'] not in prior_ids]
+   result={'status':'completed','detail':'后台整理完成；已合并待审核建议，不改变前台进度'}
+  except Exception as e:result={'status':'failed','detail':'材料整理未完成，原记录保留',**background_error(e)}
   with task_lock(work['id']):
-   fresh=load(work['id'])
+   try:fresh=load(work['id'])
+   except ValueError:return
    if fresh.get('organizer_run',{}).get('id')!=run['id']:return
-   if task_signature(fresh)!=baseline:result={'status':'failed','detail':'材料已变化，未采用过期整理结果'}
-   elif result['status']=='completed':fresh['workflow']=work['workflow']
-   fresh['organizer_run'].update(result);save(fresh)
-  drain_chat(work['id'])
+   if result['status']=='completed' and not background_sources_match(fresh,source_rows):result={'status':'conflict','detail':'来源原话已被修改，本批建议保留供回查','error_code':'source_changed','pending_proposals':new_proposals}
+   elif result['status']=='completed':
+    existing=workflow_records.initialize(fresh)['proposals']
+    for proposal in new_proposals:
+     duplicate=any(all(old.get(k)==proposal.get(k) for k in ('kind','content','evidence_ids')) for old in existing)
+     if not duplicate:
+      proposal['source_project_hash']=work.get('project_hash')
+      proposal['source_workflow_revision']=work['workflow']['revision']
+      proposal['background_snapshot']=True
+      existing.append(proposal)
+   fresh['organizer_run'].update(result,elapsed_seconds=round(time.time()-run['started_at'],1))
+   archive_background_run(fresh,'organizer',fresh['organizer_run']);save(fresh)
+  # Coalesce new interactions into one following batch, never spin without new input.
+  with task_lock(work['id']):
+   try:latest=load(work['id'])
+   except ValueError:return
+   es=teaching_evolution.state(latest)
+   if es['auto'] and es['mode']!='off' and teaching.TeachingAgent().mode=='model' and teaching_evolution.pending(latest):
+    try:start_experience_review(latest)
+    except ValueError:pass
+   if result['status']=='completed' and workflow_records.initialize(latest)['auto_organize'] and teaching.TeachingAgent().mode=='model' and len(teaching_evolution.eligible(latest))>len(source_rows):
+    try:start_organizer(latest)
+    except ValueError:pass
  threading.Thread(target=worker,daemon=True).start()
+
+
+def start_experience_review(t):
+ if t.get('mode')!='opencode':raise ValueError('教学经验反思仅用于真实项目')
+ if teaching.TeachingAgent().mode!='model':raise ValueError('请先连接Teaching模型')
+ s=teaching_evolution.state(t)
+ if s['mode']=='off':raise ValueError('经验反思已关闭')
+ if s['run'].get('status')=='running':raise ValueError('经验反思正在运行')
+ review=teaching_evolution.build_review(t)
+ run={'id':str(uuid.uuid4()),'status':'running','stage':'preparing','started_at':time.time(),
+      'detail':'正在评价交互并反思教法','from_id':review['from_id'],'through_id':review['through_id'],
+      'source_digest':review['source_digest'],'playbook_revision':review['playbook_revision'],
+      'new_message_ids':review.get('new_message_ids',[]),'deferred_ids':review.get('deferred_ids',[]),
+      'request_trace':[]}
+ s['run']=run;save(t)
+ work=json.loads(json.dumps(t))
+ def worker():
+  def progress(stage, data):
+   with task_lock(work['id']):
+    try:fresh=load(work['id'])
+    except ValueError:return
+    current=teaching_evolution.state(fresh)['run']
+    if current.get('id')!=run['id']:return
+    if stage=='request':
+     phase=current.get('stage','unknown')
+     event={**data,'phase':phase}
+     trace=current.setdefault('request_trace',[])
+     old=next((r for r in trace if r.get('phase')==phase and r.get('attempt')==data['attempt']),None)
+     if old is None:trace.append(event)
+     else:old.update(event)
+    else:
+     current.update(stage=stage,**data)
+    save(fresh)
+  work['_experience_progress']=progress
+  analyzed=None
+  try:
+   analyzed=teaching_evolution.analyze(work,review)
+   result={'status':'completed','detail':'已保存评价、反思和候选经验；尚未证明效果提升'}
+  except Exception as exc:
+   result={'status':'failed','detail':'评价或反思未完成；已完成步骤保留，可重试',**background_error(exc)}
+  with task_lock(work['id']):
+   try:fresh=load(work['id'])
+   except ValueError:return
+   es=teaching_evolution.state(fresh)
+   if es['run'].get('id')!=run['id']:return
+   # Never disguise a timeout/model/validation failure as a version conflict.
+   if analyzed is not None:
+    try:
+     if not background_sources_match(fresh,review['messages']):
+      result={'status':'conflict','detail':'引用的原话已被修改，结果保留但未入库','error_code':'source_changed','unapplied_result':analyzed}
+     elif es['revision']!=review['playbook_revision']:
+      result={'status':'conflict','detail':'经验库已被调整，结果保留但未覆盖新版','error_code':'playbook_changed','unapplied_result':analyzed}
+     else:teaching_evolution.apply(fresh,review,analyzed)
+    except Exception as exc:
+     result={'status':'failed','detail':'结果合并未通过校验；已完成步骤保留',**background_error(exc)}
+   current=teaching_evolution.state(fresh)['run']
+   current.update(result,elapsed_seconds=round(time.time()-run['started_at'],1))
+   archive_background_run(fresh,'experience',current)
+   save(fresh)
+   es=teaching_evolution.state(fresh)
+   if result['status']=='completed' and es['auto'] and es['mode']!='off' and teaching_evolution.pending(fresh):
+    try:start_experience_review(fresh)
+    except ValueError:pass
+ threading.Thread(target=worker,daemon=True).start()
+
 
 def checkpoint_command(t, checkpoint_id, action, body):
  operation,launch=checkpoint_control.prepare(t,checkpoint_id,action,body,read_project_files(t['id']),project_files.read_assets(project(t['id'])))
@@ -517,7 +683,11 @@ class Handler(BaseHTTPRequestHandler):
    if len(parts)==4 and parts[:2]==['api','tasks'] and parts[3]=='teaching-v021':
     teaching_v021.auth(self,parts[2])
     with task_lock(parts[2]):return self.reply(200,teaching_v021.get_view(load(parts[2])))
-   if parts==['api','health']: return self.reply(200,{'coding_mode':'sample_or_opencode','coding':opencode_executor.metadata(),'teaching':teaching.TeachingAgent().metadata(),'teaching_library':teaching_library.metadata(),'storage':'sqlite'})
+   if parts==['api','health']: return self.reply(200,{'coding_mode':'sample_or_opencode','coding':opencode_executor.metadata(),'teaching':teaching.TeachingAgent().metadata(),'teaching_library':teaching_library.metadata(),'storage':'sqlite','background_revision':'snapshot-v2','model_timeouts':model_limits.settings()})
+   if len(parts)==4 and parts[:3]==['api','teaching','library']:
+    data=teaching_library.catalog();card=next((c for c in data['lessons'] if c['id']==parts[3]),None)
+    if card is None:return self.reply(404,{'error':'课卡不存在'})
+    return self.reply(200,{'lesson':card,'revision':data['revision'],'sources':[s for s in data['sources'] if s['id'] in card['source_ids']]})
    if parts==['api','students']:
     with connection() as c:rows=c.execute('SELECT body FROM student_libraries').fetchall()
     return self.reply(200,[{k:r[k] for k in ('id','name','revision')} for (body,) in rows for r in [json.loads(body)]])
@@ -565,7 +735,7 @@ class Handler(BaseHTTPRequestHandler):
     if not safe_preview_name(parts[2]): return self.reply(404,{'error':'文件不存在'})
     return self.reply(200,p.read_bytes(),mimetypes.guess_type(p.name)[0] or 'text/plain')
    name='index.html' if parts==[''] else '/'.join(parts)
-   if name not in ['index.html','app.js','workflow.js','teaching-v021.js','style.css']: return self.reply(404,{'error':'地址不存在'})
+   if name not in ['index.html','app.js','workflow.js','evolution.js','teaching-v021.js','style.css']: return self.reply(404,{'error':'地址不存在'})
    p=ROOT/'frontend'/name
    return self.reply(200,p.read_bytes(),(mimetypes.guess_type(name)[0] or 'text/plain')+'; charset=utf-8')
   except teaching_v021.AccessDenied as e:self.reply(403,{'error':str(e)})
@@ -592,6 +762,10 @@ class Handler(BaseHTTPRequestHandler):
     if parts==['api','settings','coding']:
      opencode_executor.configure(body.get('api_key'),body.get('model'),body.get('region','cn'),body.get('provider','bailian'))
      return self.reply(200,opencode_executor.metadata())
+    if parts==['api','settings','timeouts']:
+     value=model_limits.validate(body)
+     write_project_bytes(DATA/'model-timeouts.json',json.dumps(value).encode())
+     return self.reply(200,model_limits.configure(value))
     if parts==['api','settings','teaching']:
      provider=body.get('provider','deepseek')
      providers.configure(provider,body.get('api_key',''),body.get('model',providers.DEFAULT_MODELS.get(provider,'')))
@@ -636,14 +810,18 @@ class Handler(BaseHTTPRequestHandler):
       row=next((m for m in t['messages'] if m.get('request_id')==body.get('request_id')),None)
       if not row or row.get('queue_status')!='needs_retry':raise ValueError('没有需要重试的排队消息')
       row['queue_status']='queued';save(t);drain_chat(t['id']);return self.reply(202,snapshot(load(t['id'])))
-     if t.get('organizer_run',{}).get('status')=='running' or t.get('verification_run',{}).get('status')=='running':raise ValueError('后台整理或验证正在进行，请稍后修改；聊天仍可发送')
+     if t.get('verification_run',{}).get('status')=='running':raise ValueError('验证正在进行，请稍后修改；聊天仍可发送')
      if t.get('coding_run',{}).get('status') in ('queued','running'):raise ValueError('Coding正在执行，请稍等')
      if t.get('teaching_run',{}).get('status') in ('queued','running'): raise ValueError('教师正在处理上一条消息，请稍等')
      if not isinstance(text,str) or len(text)>12000: raise ValueError('消息格式不正确或过长')
      observations=body.get('runtime_observations','workflow')
      if isinstance(observations,list):
       t['runtime_observations']=[{'type':x.get('type'),'message':x.get('message','')[:500],'line':x.get('line',0),'source':'browser_report_not_verified_test'} for x in observations[-20:] if isinstance(x,dict) and x.get('type') in ('ready','error') and isinstance(x.get('message'),str)]
-     if action=='workflow/feature':
+     if action=='teaching/experience-review':
+      start_experience_review(t);return self.reply(202,snapshot(t))
+     elif action=='teaching/experience-manage':
+      teaching_evolution.manage(t,body);save(t);return self.reply(200,snapshot(t))
+     elif action=='workflow/feature':
       files,assets=project_files.scan(project(t['id']));workflow_records.feature(t,body,workflow.digest(files,assets));save(t);return self.reply(200,snapshot(t))
      elif action=='student/attach':
       with connection() as c:student_library.attach(c,t,body)
@@ -718,7 +896,9 @@ class Handler(BaseHTTPRequestHandler):
       if not version:raise ValueError('版本不存在')
       apply_coding_files(t,files,version['files'],'恢复版本 '+version['label'],assets,version['assets'])
       save(t);return self.reply(200,snapshot(t))
-     if action=='coding/plan-decision':
+     if action=='coding/reply-accept':
+      accept_coding_reply(t,body);save(t);return self.reply(200,snapshot(t))
+     elif action=='coding/plan-decision':
       choice=body.get('choice');request_id=body.get('request_id');draft=t.get('plan_draft')
       if t.get('mode')!='opencode' or t.get('plan') or not draft:raise ValueError('当前没有待选择的计划')
       if choice not in ('approve','revise') or not isinstance(request_id,str) or not 1<=len(request_id)<=120:raise ValueError('计划选择无效')
@@ -792,34 +972,7 @@ class Handler(BaseHTTPRequestHandler):
       if not text.strip(): raise ValueError('消息不能为空')
       ch=action.split('/')[0];message(t,ch,'user',text)
       if ch=='coding' and t.get('mode')=='opencode':
-       command=text.strip().rstrip('。！!')
-       import re
-       if coding_workflow.confirms_plan(command) and t.get('plan_draft') and not t.get('plan'):
-        message(t,'coding','assistant','请在计划下方选择 ✓ 可以，开始 或 ✕ 不行，继续修改。');save(t);return self.reply(200,snapshot(t))
-       if command in ('检查通过','本步通过','当前阶段通过'):
-        coding_workflow.accept_phase(t);message(t,'coding','assistant','已记录检查通过，当前已暂停。');save(t);return self.reply(200,snapshot(t))
-       if command=='返工当前阶段':
-        if not t['plan'] or t['step']>=len(t['plan']):raise ValueError('没有当前阶段')
-        start_coding(t,t['plan'][t['step']]+'；根据最近学生反馈返工，仅此阶段');return self.reply(202,snapshot(t))
-       if command in ('开始','开始开发','执行当前阶段','继续','继续下一阶段') and t.get('plan'):
-        if not t['plan'] or t['step']>=len(t['plan']):raise ValueError('请先确认计划，或所有阶段已通过')
-        checkpoints=coding_workflow.state(t)['checkpoints']
-        if checkpoints[t['step']]['status']=='executed_pending_review':raise ValueError('当前阶段待检查，请先反馈问题或确认检查通过')
-        start_coding(t,t['plan'][t['step']]);return self.reply(202,snapshot(t))
-       import re
-       wants_edit=coding_workflow.message_intent(command)=='execute'
-       if not t.get('plan') and t.get('plan_draft') and wants_edit:
-        message(t,'coding','assistant','开始前，请在计划下方点击 ✓ 可以，开始；需要调整请选择 ✕。');save(t);return self.reply(200,snapshot(t))
-       if not t.get('plan') and (wants_edit or re.search(r'做|小游戏|网站|网页|应用|(?:制定|生成|给出|写).*计划',command)):
-        start_coding(t,text,planning=True);return self.reply(202,snapshot(t))
-       if wants_edit and t.get('plan'):
-        if t['step']>=len(t['plan']):raise ValueError('已确认计划全部完成，如需新任务请先制定新计划')
-        if coding_workflow.state(t)['checkpoints'][t['step']]['status']=='executed_pending_review' and t.get('coding_checkpoints'):
-         checkpoint=t['coding_checkpoints'][-1]
-         code,result=checkpoint_command(t,checkpoint['checkpoint_id'],'revise',{'session_id':t['id'],'request_id':str(uuid.uuid4()),'confirmed':True,'instruction':text,'expected_code_hash':knowledge.code_hash(read_project_files(t['id']))})
-         return self.reply(code,result['task'])
-        start_coding(t,t['plan'][t['step']]+'\n学生补充：'+text);return self.reply(202,snapshot(t))
-       start_coding(t,text,chatting=True);return self.reply(202,snapshot(t))
+       dispatch_coding_message(t,text);return self.reply(202,snapshot(t))
       if ch=='teaching':
        start_teaching(t);return self.reply(202,snapshot(t))
       else: message(t,ch,'assistant','补充要求已保存，Teaching可读取；模型/API未配置，当前不会自动改代码。' if t.get('mode')=='opencode' else '补充要求已保存，Teaching Agent 也可以读取。点击执行前可在确认框中编辑本步指令；示例适配器仍按固定教程修改文件。')
@@ -921,7 +1074,11 @@ def create_preview_server(preferred_port):
    if port==0:raise
 
 def recover_interrupted(t):
- changed=False
+ if t.get('teaching_evolution',{}).get('run',{}).get('status')=='running':
+  t['teaching_evolution']['run'].update(status='failed',detail='服务重启，反思未完成；可手动重试')
+  experience_interrupted=True
+ else:experience_interrupted=False
+ changed=experience_interrupted
  for request in t.get('teaching_v021',{}).get('requests',{}).values():
   if request.get('status')=='running':request.update(status='failed',error='service_restarted; explicit retry required');changed=True
  for row in t.get('messages',[]):
@@ -939,6 +1096,9 @@ def recover_interrupted(t):
 
 if __name__=='__main__':
  parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8772);args=parser.parse_args()
+ if (DATA/'model-timeouts.json').exists():
+  try:model_limits.configure(json.loads((DATA/'model-timeouts.json').read_text(encoding='utf8')))
+  except (ValueError,OSError):print('模型超时配置无效，使用默认值',flush=True)
  print(f'Control workbench: http://127.0.0.1:{args.port} · SAMPLE AGENTS',flush=True)
  with connection() as c:
   for (body,) in c.execute('SELECT body FROM tasks').fetchall():

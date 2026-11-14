@@ -19,7 +19,9 @@ def build(task, action):
     changes = evidence.get('changes', [])
     # Send current source around actual diff hunks, not each file's first 120 lines.
     # The diff itself stays in storage, so inserted source is not sent twice.
-    if review and not evidence.get('stale_for_code'):
+    previous_hash=task.get('teaching',{}).get('continuity',{}).get('code_hash')
+    changed_since_last_read=previous_hash!=knowledge.code_hash(source)
+    if review and (changed_since_last_read or action=='review') and not evidence.get('stale_for_code'):
         per_file_budget = max(800, SOURCE_BUDGET // max(1, sum(c['file'] in source for c in changes)))
         for change in changes:
             name = change['file']
@@ -83,8 +85,9 @@ def build(task, action):
         messages.append({'id': i, 'channel': item['channel'], 'role': item['role'],
                          'content': item['content'][:limit], 'truncated': len(item['content']) > limit})
     ctx = {'action': action, 'interaction_mode': 'project_chat',
+           'code_changed_since_last_reply':changed_since_last_read,
            'current_request': {'message_id':focus} if action=='message' else
-                              {'instruction':'检查本轮检查点；历史对话仅供接续，不重新回答旧问题。'},
+                              {'instruction':'根据当前教学阶段和接续记忆继续教学；本轮检查点是作品材料，不是要求只做代码审查。历史问题不重复回答。'},
            'development_scope': coding_workflow.phase_contract(task),
            'checkpoint_event': compact_event if review else None,
            'files': selected,

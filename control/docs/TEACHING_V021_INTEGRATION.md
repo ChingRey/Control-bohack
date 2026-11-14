@@ -12,7 +12,7 @@
 
 普通站点仍可 `python -X utf8 backend.py --port 8772` 启动。联调入口需由本机操作者在启动时设置 CONTROL_V021_ACCESS_TOKEN；未配置时接口关闭授权入口，不能匿名调用。
 
-推荐运行 `powershell -ExecutionPolicy Bypass -File scripts/start_teaching_v021.ps1`，在本机终端输入自己设置的至少16字符随机访问令牌。令牌不是模型API Key，仅进程保存，不写数据库或前端持久化。在教师面板打开“V0.2.1 接口联调”，输入同一令牌，连接当前项目会话。输入框随后清空，后续用HttpOnly、SameSite=Strict、8小时有效的项目范围会话Cookie。
+推荐运行 `powershell -ExecutionPolicy Bypass -File scripts/start_teaching_v021.ps1`，在本机终端输入自己设置的至少16字符随机访问令牌。令牌不是模型API Key，仅进程保存，不写数据库或前端持久化。在设置→教学工具与经验中打开“V0.2.1 接口联调”，输入同一令牌，连接当前项目会话。输入框随后清空，后续用HttpOnly、SameSite=Strict、8小时有效的项目范围会话Cookie。
 
 服务只监听127.0.0.1，POST继续执行旧站Host/Origin校验。Bearer令牌代表本机操作者；项目会话代表该项目学生操作。allow-switch只接受操作者权限，学生不能提交策略候选、active_strategy、history或allow_strategy_switch。没有接入多用户SSO/远程角色管理，旧站接口也没有统一身份认证，不应当作可公网部署的系统。
 
@@ -74,5 +74,5 @@ P=`/api/tasks/:id/teaching-v021`。所有写操作需稳定request_id，重复�
 
 - Coding精确识别 oldString=newString 的无变化编辑，不误报成权限拒绝；真实文件工具错误仍阻止采用，保留具体原因。
 - 无计划直接文件操作不再访问不存在的阶段数组。
-- 教师自然对话区分HTTP状态、超时和网络连接错误，页面直接显示实际原因；默认单次90秒，可用 CONTROL_TEACHING_REQUEST_TIMEOUT_SECONDS 在30–300秒间配置，整轮预算240秒，最多5次请求的限制保留。Coding默认900秒不变。
+- 教师自然对话区分HTTP状态、超时和网络连接错误，页面直接显示实际原因；现由设置页“模型超时”配置，默认单次60秒、整轮120秒；兼容诊断函数保留 CONTROL_TEACHING_REQUEST_TIMEOUT_SECONDS 解析，实际任务以model_timeouts预算为准，最多5次请求的限制保留。Coding默认900秒不变。
 - 删除临时任务后后台收尾不再对不存在任务继续排队；不移除任务锁或过期结果保护。

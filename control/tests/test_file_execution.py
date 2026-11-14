@@ -30,8 +30,9 @@ class ProjectFileExecutionTests(unittest.TestCase):
             self.assertEqual(task['plan'],[]);self.assertEqual(len(task['plan_draft']),2)
             self.h.call(self.h.path+'/chat/send',{'channel':'coding','message':'开始开发','request_id':'queued-unapproved'})
             task=self.h.wait()
-            self.assertEqual(transport.call_count,1)
+            self.assertEqual(transport.call_count,2)  # Text feedback regenerates the draft, never authorizes files.
             self.assertEqual(task['plan'],[])
+            self.assertEqual(b.read_project_files(task['id']),{})
 
     def test_create_js_request_and_followup_revision_are_writable(self):
         with patch.object(executor,'execute',side_effect=self.run_coding):
@@ -63,8 +64,11 @@ class ProjectFileExecutionTests(unittest.TestCase):
             self.assertEqual(task['coding_workflow']['checkpoints'][0]['status'],'executed_pending_review')
             self.assertEqual(task['coding_workflow']['checkpoints'][1]['status'],'pending')
             self.assertEqual(len(task['plan']),2);self.assertIn('src/main.js',b.read_project_files(task['id']))
-            self.assertEqual(self.h.call(self.h.path+'/coding/messages',{'message':'继续'})[0],400)
-            self.assertEqual(execute.call_count,1)
+            self.assertEqual(self.h.call(self.h.path+'/coding/messages',{'message':'继续'})[0],202)
+            task=self.h.wait()
+            self.assertEqual(execute.call_count,2)
+            self.assertEqual(task['step'],0)  # Only a checkmark accepts the stage.
+            self.assertEqual(task['coding_workflow']['checkpoints'][1]['status'],'pending')
 
     def test_failed_write_cannot_be_reported_as_completed(self):
         def failed(files,packet,*args):

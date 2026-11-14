@@ -43,7 +43,7 @@ def main():
  provider=ThreadingHTTPServer(('127.0.0.1',0),Provider);threading.Thread(target=provider.serve_forever,daemon=True).start()
  token=secrets.token_urlsafe(32);examples=[]
  try:
-  with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp,patch.object(b,'DATA',Path(tmp)/'workbench'),patch.object(b,'DB',Path(tmp)/'records.sqlite3'),patch.object(executor,'ROOT',Path(tmp)),patch.object(executor,'binary',return_value=exe),patch.object(executor,'CONFIG',{'key':'synthetic-test-only','model':'smoke','url':f'http://127.0.0.1:{provider.server_port}/v1'}),patch.dict(os.environ,{'CONTROL_V021_ACCESS_TOKEN':token,'TEACHING_MODE':'sample','CONTROL_CODING_TIMEOUT_SECONDS':'60'}):
+  with tempfile.TemporaryDirectory(dir=report_path,ignore_cleanup_errors=True) as tmp,patch.object(b,'DATA',Path(tmp)/'workbench'),patch.object(b,'DB',Path(tmp)/'records.sqlite3'),patch.object(executor,'ROOT',Path(tmp)),patch.object(executor,'binary',return_value=exe),patch.object(executor,'CONFIG',{'key':'synthetic-test-only','model':'smoke','url':f'http://127.0.0.1:{provider.server_port}/v1'}),patch.dict(os.environ,{'CONTROL_V021_ACCESS_TOKEN':token,'TEACHING_MODE':'sample','CONTROL_CODING_TIMEOUT_SECONDS':'60'}):
    b.DATA.mkdir()
    server=b.LocalHTTPServer(('127.0.0.1',0),Quiet);threading.Thread(target=server.serve_forever,daemon=True).start();base=f'http://127.0.0.1:{server.server_port}'
    def http(path,body=None,authenticated=True):
@@ -105,7 +105,7 @@ def main():
    cases=[]
    def step(action,selector=None,**kw):cases.append({'action':action,**({'selector':selector} if selector else {}),**kw})
    def pause():step('wait',ms=350)
-   step('wait',ms=700);step('click','#open-v021');step('fill','#v021-token',value=token);step('click','#v021-login');pause()
+   step('wait',ms=700);step('click','#open-settings');step('click','#teaching-tools-settings > summary');step('click','#open-v021');step('fill','#v021-token',value=token);step('click','#v021-login');pause()
    step('assert_text','#v021-status',text='当前策略');step('assert_value','#v021-token',value='')
    step('click','#v021-decide');pause();step('click','#v021-teach');pause();step('assert_text','#v021-result',text='MOCK')
    step('fill','#v021-message',value='我会检查购物车操作和边界条件。');step('click','#v021-respond');pause()

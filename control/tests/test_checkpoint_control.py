@@ -190,4 +190,16 @@ class CheckpointControlTests(unittest.TestCase):
         self.assertEqual(b.load(task['id'])['step'],0)
 
 
+    def test_plain_queued_feedback_revises_current_stage_then_can_accept(self):
+        task,event=self.initial_pause()
+        code,_=self.h.call(self.h.path+'/chat/send',{'channel':'coding','message':'红色，大一点','request_id':'plain-phase-revise'})
+        self.assertEqual(code,202);task=self.h.wait()
+        self.assertEqual(task['step'],0)
+        latest=task['coding_checkpoints'][-1]
+        self.assertEqual(latest['root_checkpoint_id'],event['checkpoint_id'])
+        self.assertEqual(task['coding_workflow']['checkpoints'][0]['status'],'executed_pending_review')
+        self.assertEqual(self.command(latest,'resume',self.body(task,latest,'accept-after-plain'))[0],202)
+        self.assertEqual(self.h.wait()['step'],1)
+
+
 if __name__=='__main__':unittest.main()
