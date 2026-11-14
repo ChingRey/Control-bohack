@@ -88,6 +88,12 @@ def snapshot(t):
  t['runtime_process']=project_runtime.status(t['id'])
  t['runtime_process']['current']=t['runtime_process'].get('hash')==t['project_hash']
  t['file_hashes']={name:code_refs.digest(source) for name,source in t['files'].items()}
+ current_hash=knowledge.code_hash(t['files'])
+ for m in t.get('messages',[]):
+  if m.get('channel')=='teaching' and m.get('role')=='assistant' and 'code_refs' not in m:
+   turn=next((r for r in reversed(t.get('teaching',{}).get('turns',[])) if r.get('result',{}).get('reply')==m.get('content')),None)
+   if turn and turn.get('code_hash')==current_hash:m['code_refs']=code_refs.collect(m['content'],t['files'])
+
  if t.get('mode')=='opencode':
   coding_workflow.state(t)
   if not t.get('plan_draft'):
@@ -194,6 +200,8 @@ def start_teaching(t, action='message'):
    if stale:
     result={'status':'failed','detail':'项目或学习记录已变化，本次分析已过期，请重新审查','error':'stale_context'}
    elif result['status']=='completed':
+    for entry in work['messages'][base_count:]:
+     if entry.get('channel')=='teaching' and entry.get('role')=='assistant':entry['code_refs']=code_refs.collect(entry['content'],source_files or {})
     fresh['messages'].extend(work['messages'][base_count:])
     fresh['teaching']=work['teaching']
    if not stale and result['status']=='failed' and work['teaching']['memory']['revision']>fresh['teaching']['memory']['revision']:
@@ -277,6 +285,12 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
   packet['student_message']=instruction
  if chatting:
   packet={'student_message':instruction,'learning_context':packet['learning_context'],'project_knowledge':knowledge_context,'locked_plan':bool(t.get('plan')),'authorized_phase':t['plan'][t['step']] if t.get('plan') and t['step']<len(t['plan']) else None}
+ if not planning and not chatting:
+  packet['previous_phase_results']=[{'phase_index':i,'title':title,'summary':next((m['content'][-4000:] for m in reversed(work['messages']) if m.get('channel')=='coding' and m.get('phase_report',{}).get('index')==i),'')} for i,title in enumerate(t.get('plan',[])[:t['step']])]
+  first_requirement=next(({'message_id':i,'content':m['content'][:2000]} for i,m in enumerate(work['messages']) if m['channel']=='coding' and m['role']=='user'),None)
+  if first_requirement and first_requirement not in packet['project_requirements']:packet['project_requirements'].insert(0,first_requirement)
+ packet['phase_contract']=coding_workflow.phase_contract(t)
+ review_only=not planning and not chatting and packet['phase_contract']['execution_mode']=='review_only'
  packet['shared_materials']=workflow.shared(work)
  packet['reviewed_project_rules']=workflow_records.active_rules(work)
  packet['current_feature']=next((r for r in workflow_records.initialize(work)['features'] if r['id']==work['workflow'].get('current_feature_id')),None)
@@ -286,14 +300,15 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
  def worker():
   try:
    if not chatting and not planning:packet['recent_dialogue']=[]
-   result=opencode_executor.execute(original,packet,planning or chatting,chatting,original_assets) if original_assets else opencode_executor.execute(original,packet,planning or chatting,chatting)
+   result=opencode_executor.execute(original,packet,planning or chatting or review_only,chatting or review_only,original_assets) if original_assets else opencode_executor.execute(original,packet,planning or chatting or review_only,chatting or review_only)
    after_assets=result.get('binary_files',original_assets)
    with task_lock(t['id']):
     fresh=load(t['id'])
     if fresh.get('coding_run',{}).get('id')!=job['id']:return
     if task_signature(fresh)!=signature or project_files.scan(project(t['id']))!=(original,original_assets):raise ValueError('项目已变化，拒绝采用过期结果')
+    if review_only and (original!=result['files'] or original_assets!=after_assets):raise ValueError('当前是需求或规则阶段，禁止提前提交实现代码')
     failed_writes=opencode_executor.failed_file_tools(result['events'])
-    if failed_writes:
+    if failed_writes and original==result['files'] and original_assets==after_assets:
      coding_workflow.state(fresh)['tool_events']=result['events'];save(fresh)
      raise ValueError('文件工具执行失败（不一定是权限问题）：'+str(failed_writes[-1].get('part',{}).get('state',{}).get('error','未知工具错误'))[:500]+'；本轮改动未提交')
     if chatting:
@@ -305,7 +320,8 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
      if not coding_workflow.sync_plan(fresh,result['text'],result['events']):
       if not fresh.get('plan_draft'):raise ValueError('尚未形成可同步的计划，请继续讨论阶段和验收点')
     else:
-     if re.search(r'创建|写入|写文件|修改|实现|开发|修复',instruction) and original==result['files'] and original_assets==after_assets:
+     requires_file_change=packet['phase_contract']['requires_file_change'] or (not review_only and bool(re.search(r'创建|新建|写入|写文件|写代码|编写|修改|实现|开发|修复|添加|删除|重命名',instruction)))
+     if requires_file_change and original==result['files'] and original_assets==after_assets:
       coding_workflow.state(fresh)['tool_events']=result['events']
       coding_workflow.state(fresh)['status']='paused'
       fresh['coding_run'].update(status='failed',detail='未检测到实际文件变更，当前阶段未完成')
@@ -323,7 +339,13 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
     w=coding_workflow.state(fresh);w['status']='paused';w['tool_events']=result['events']
     w['loads'].append({'phase':work['step'],'rule_versions':[{'id':r['id'],'revision':r['revision']} for r in packet['learning_context']['rules']],'knowledge_versions':[{'id':r['id'],'revision':r['revision'],'code_hash':r['code_hash']} for r in packet.get('project_knowledge',[])],'skill_versions':[],'submitted':True,'applied':False,'material_revision':packet['shared_materials']['revision'],'reviewed_rules':[{'id':r['id'],'revision':r['revision']} for r in packet['reviewed_project_rules']]})
     coding_workflow.event(fresh,'turn_finished','OpenCode轮次结束；等待学生审查与确认，未验证行为正确性')
-    message(fresh,'coding','assistant',result['text']);fresh['messages'][-1]['code_refs']=code_refs.collect(result['text'],result['files']);fresh['coding_run'].update(status='completed',detail='已暂停，等待审查')
+    message(fresh,'coding','assistant',result['text']);fresh['messages'][-1]['code_refs']=code_refs.collect(result['text'],result['files'])
+    if failed_writes:
+     fresh['messages'][-1]['execution_warnings']=[{'tool':e['part']['tool'],'error':str(e['part'].get('state',{}).get('error','工具调用失败'))[:500]} for e in failed_writes]
+    if not chatting and not planning and work.get('plan'):
+     fresh['messages'][-1]['phase_report']={'index':work['step'],'title':work['plan'][work['step']],
+        'status':'executed_pending_review','execution_status':'executed','acceptance_status':'not_accepted','changed_files':[c['file'] for c in fresh['changes'][len(work['changes']):]],'scope_verified':review_only}
+    fresh['coding_run'].update(status='completed',detail='计划第'+str(work['step']+1)+'项已暂停，等待检查' if not chatting and not planning and work.get('plan') else '已执行，暂停等待审查')
     if not chatting:
      checkpoint=checkpoint_events.record(fresh,job['id'],instruction,result['text'],original,result['files'],work['step'],'planning' if planning else 'development',result.get('events',[]),original_assets,after_assets)
      if checkpoint_operation is not None:
@@ -405,7 +427,15 @@ def drain_chat(tid):
    if row['channel']=='teaching':start_teaching(t)
    elif t.get('mode')=='opencode':
     instruction=row['content'];intent=coding_workflow.message_intent(instruction)
-    start_coding(t,instruction,chatting=intent!='execute')
+    needs_plan=not t.get('plan') and workflow_records.initialize(t)['mode']!='free'
+    if needs_plan and t.get('plan_draft') and (intent=='execute' or coding_workflow.confirms_plan(instruction)):
+     t.pop('_queue_launch_id',None)
+     message(t,'coding','assistant','请在聊天里的计划下选择 ✓ 可以，开始 或 ✕ 不行，继续修改。');save(t)
+     threading.Thread(target=drain_chat,args=(tid,),daemon=True).start()
+    else:
+     planning=needs_plan and (intent=='execute' or bool(re.search(r'做|小游戏|网站|网页|应用|计划',instruction)))
+     if intent=='execute' and t.get('plan') and t['step']>=len(t['plan']):raise ValueError('计划已全部验收，请先开始新任务')
+     start_coding(t,instruction,planning=planning,chatting=not planning and intent!='execute')
    else:
     t.pop('_queue_launch_id',None)
     message(t,'coding','assistant','示例模式不执行任意开发指令，请连接Coding模型。');save(t)

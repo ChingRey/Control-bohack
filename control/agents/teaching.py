@@ -4,7 +4,7 @@ import json
 import os
 import re
 import time
-from . import memory, learning, providers, checkpoints, workflow, workflow_methods, workflow_records, project_safety, teaching_library
+from . import memory, learning, providers, checkpoints, coding_workflow, teaching_input, workflow, workflow_methods, workflow_records, project_safety, teaching_library
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -55,6 +55,7 @@ def state(t):
 
 def context(t, action):
  s=state(t)
+ if t.get('mode')=='opencode':return teaching_input.build(t,action)
  files=t.get('files',{})
  source,source_index=checkpoints.source_context(t,files)
  checkpoint=checkpoints.view(t,files)
@@ -88,6 +89,7 @@ def context(t, action):
   'confirmed_experiences':learning.coding_packet(t,(next((m['content'] for m in selected if m['id']==focus['coding_prompt_id']),'')))['rules']}
  if t.get('mode')=='opencode':
   ctx['interaction_mode']='project_chat'
+  ctx['development_scope']=coding_workflow.phase_contract(t)
   for key in ('lesson','knowledge_map','transfer_question','transfer_answer','pending_transfer','teaching_plan','course','skills_available','learner_profile','coding_skill_catalog'):
    ctx.pop(key,None)
  if memory.size(ctx)>memory.MAX_CONTEXT_CHARS:
@@ -351,7 +353,7 @@ def engineering_alignment(task,ctx):
 def run(t, action='message', progress=None):
  s=state(t);agent=TeachingAgent();agent.history=t['messages'];agent.project_source=t.get('files',{});agent.progress=progress or (lambda *a:None)
  agent.request_budget={'attempts':0,'deadline':time.monotonic()+240}
- if agent.mode=='model':memory.prepare(t,agent.summarize_memory,agent.progress)
+ if agent.mode=='model' and t.get('mode')!='opencode':memory.prepare(t,agent.summarize_memory,agent.progress)
  ctx=context(t,action)
  ctx['shared_materials']=workflow.shared(t)
  ctx['engineering_alignment']=engineering_alignment(t,ctx)
@@ -370,8 +372,10 @@ def run(t, action='message', progress=None):
   ctx['context_usage']['teaching_library_characters']=teaching_library.size(ctx['teaching_library'])
   ctx['context_usage']['json_characters']=memory.size(ctx)
   reply=project_chat(agent,ctx,progress or (lambda *a:None))
+  if agent.mode=='model':teaching_input.remember(t,ctx,reply,getattr(agent,'continuity_notes',None))
   s['turns'].append({'id':s.get('next_turn_id',0),'action':action,'code_hash':ctx['code_hash'],'loaded_skills':[],
-    'provider':agent.metadata(),'tools':getattr(agent,'tool_trace',[]),'teaching_library':teaching_library.trace(ctx['teaching_library'],agent.mode=='model'),'context_usage':ctx['context_usage'],'workflow_methods':list(ctx['stage_methods']),'material_revision':ctx['shared_materials']['revision'],'result':{'reply':reply,'mode':'project_chat'},'checkpoint_id':(ctx.get('checkpoint_event') or {}).get('checkpoint_id')})
+    'provider':agent.metadata(),'teaching_library':teaching_library.trace(ctx['teaching_library'],agent.mode=='model'),'workflow_methods':list(ctx['stage_methods']),'material_revision':ctx['shared_materials']['revision'],'tools':getattr(agent,'tool_trace',[]),'result':{'reply':reply,'mode':'project_chat'},'checkpoint_id':(t.get('coding_checkpoints') or [{}])[-1].get('checkpoint_id'),
+    'context_usage':ctx['context_usage'],'request_attempts':agent.request_budget['attempts'],'continuity_revision':s.get('continuity',{}).get('revision',0)})
   s['next_turn_id']=s.get('next_turn_id',0)+1
   s['course']['last_code_hash']=ctx['code_hash']
   return reply
@@ -444,5 +448,7 @@ def project_chat(agent,ctx,progress):
    continue
   reply=msg.get('content') or ''
   if not reply.strip():raise ValueError('Teaching返回空内容，请重试')
+  reply,agent.continuity_notes=teaching_input.split_reply(reply,ctx)
+  if not reply:raise ValueError('Teaching返回空回复，接续记忆未更新，请重试')
   return reply
  raise ValueError('只读查询预算已用完，请缩小问题范围')

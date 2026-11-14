@@ -19,6 +19,20 @@ class ProjectFileExecutionTests(unittest.TestCase):
         content='console.log("revised");' if 'src/main.js' in files else 'console.log("ready");'
         return {'text':'已保存 src/main.js','files':{**files,'src/main.js':content},'events':[]}
 
+    def test_new_queued_chat_keeps_plan_before_execution(self):
+        task=b.load(self.h.task['id']);task['plan']=[];task['plan_draft']=[];b.save(task)
+        def plan(files,packet,planning=False,chatting=False):
+            self.assertTrue(planning);self.assertFalse(chatting)
+            return {'text':'开发计划：\n1. 创建游戏页面\n2. 添加交互','files':files,'events':[]}
+        with patch.object(executor,'execute',side_effect=plan) as transport:
+            self.h.call(self.h.path+'/chat/send',{'channel':'coding','message':'我们做一个小游戏','request_id':'queued-plan'})
+            task=self.h.wait()
+            self.assertEqual(task['plan'],[]);self.assertEqual(len(task['plan_draft']),2)
+            self.h.call(self.h.path+'/chat/send',{'channel':'coding','message':'开始开发','request_id':'queued-unapproved'})
+            task=self.h.wait()
+            self.assertEqual(transport.call_count,1)
+            self.assertEqual(task['plan'],[])
+
     def test_create_js_request_and_followup_revision_are_writable(self):
         with patch.object(executor,'execute',side_effect=self.run_coding):
             self.assertEqual(self.h.call(self.h.path+'/coding/messages',{'message':'按计划创建 src/main.js 并写入代码'})[0],202)
@@ -60,6 +74,19 @@ class ProjectFileExecutionTests(unittest.TestCase):
             task=self.h.wait()
         self.assertEqual(task['coding_run']['status'],'failed');self.assertEqual(task['step'],0)
         self.assertFalse(any(m.get('content')=='所有文件已经完成' for m in task['messages']))
+
+    def test_actual_changes_with_failed_edit_are_saved_for_student_review(self):
+        def partial(files,packet,*args):
+            return {'text':'已写入，仍需检查。','files':{**files,'src/main.js':'const value = 1;'},
+                    'events':[{'part':{'tool':'edit','state':{'status':'error','error':'No changes to apply: oldString and newString are identical.'}}}]}
+        with patch.object(executor,'execute',side_effect=partial):
+            self.h.call(self.h.path+'/coding/messages',{'message':'按计划创建 src/main.js'})
+            task=self.h.wait()
+        self.assertEqual(task['coding_run']['status'],'completed')
+        self.assertEqual(task['step'],0)
+        self.assertEqual(task['coding_workflow']['checkpoints'][0]['status'],'executed_pending_review')
+        self.assertIn('src/main.js',b.read_project_files(task['id']))
+        self.assertEqual(task['messages'][-1]['execution_warnings'][0]['tool'],'edit')
 
     def test_explicit_discussion_stays_read_only(self):
         for instruction in ('先讨论如何创建 src/main.js，不要写代码','修改开发计划','如何创建JS文件？','请给出开发计划'):

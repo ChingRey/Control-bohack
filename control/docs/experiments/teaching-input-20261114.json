@@ -1,0 +1,37 @@
+{
+  "baseline_review_context_characters_previously_measured": 32538,
+  "optimized_current_game_context_characters": {
+    "checkpoint": 9672,
+    "message": 3272
+  },
+  "real_test": {
+    "project": "isolated counter probe",
+    "review_elapsed_seconds": 47.9,
+    "followup_elapsed_seconds": 13.8,
+    "followup_request_attempts": 1,
+    "continuity_revision": 2,
+    "followup_context_usage": {
+      "json_characters": 3893,
+      "limit_characters": 80000,
+      "counter": "characters_not_tokens",
+      "loaded_message_ids": [
+        2,
+        13,
+        14,
+        15,
+        16
+      ],
+      "input_revision": "compact-v1",
+      "source_budget_characters": 6500
+    },
+    "reply_contains_internal_marker": false,
+    "files_and_step_unchanged": true
+  },
+  "automated_tests_passed": 144,
+  "limitations": [
+    "Latency observations are not a controlled benchmark.",
+    "Memory notes are model summaries, not verified mastery or authoritative plan state.",
+    "Text display still waits for completed response; streaming was not changed."
+  ],
+  "interfaces_removed": []
+}

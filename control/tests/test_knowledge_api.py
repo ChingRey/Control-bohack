@@ -92,7 +92,7 @@ class KnowledgeApiTests(unittest.TestCase):
  def test_backend_coding_run_retrieves_and_logs_approved_knowledge(self):
   candidate_id=self.add_candidate()
   self.call(f'{self.path}/knowledge/{candidate_id}/review',{'confirmed':True,'decision':'approve','reviewer':'maintainer'})
-  task=b.load(self.task['id']);task.update(mode='opencode',plan=['实现空白输入校验'],step=0)
+  task=b.load(self.task['id']);task.update(mode='opencode',plan=['检查空白输入约定'],step=0)
   coding_workflow=b.coding_workflow;coding_workflow.confirm(task);b.save(task)
   b.opencode_executor.configure('test-key','qwen-test','cn')
   captured=[]

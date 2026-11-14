@@ -123,13 +123,13 @@ function jumpToCode(name,lineNumber=null,endLine=null){
  editor.scrollIntoView({behavior:'smooth',block:'center'});
 }
 function fileReference(el,name,snippet='',requestedLine=null,requestedEnd=null){
- const exists=Object.prototype.hasOwnProperty.call(task.files||{},name);let location=exists?resolveCodeLocation(name,snippet,null):null;let reason='';
+ const exists=Object.prototype.hasOwnProperty.call(task.files||{},name);let location=exists&&snippet.trim()?resolveCodeLocation(name,snippet,null):null;let reason='';
  if(requestedLine){const ref=displayedCodeRefs.find(r=>r.file===name&&r.start===Number(requestedLine)&&r.end===Number(requestedEnd||requestedLine));if(ref?.valid&&ref.hash===task.file_hashes?.[name])location={line:ref.start,end:ref.end,kind:'版本核验'};else{location=null;reason=ref?.valid?' · 引用已过期':' · 位置未核验';}}
  const button=document.createElement('button');button.type='button';button.className='code-reference';button.textContent=exists?'↗ '+name+(location?' · 第 '+location.line+(location.end&&location.end!==location.line?'-'+location.end:'')+' 行 · '+location.kind:' · 打开文件'+reason):name+'（尚未生成）';button.disabled=!exists;button.onclick=()=>jumpToCode(name,location?.line,location?.end);el.append(button);
 }
 function linkedText(el,text){
- const pattern=/([A-Za-z0-9_./-]+\.(?:html|css|js|ts|tsx|jsx|json|py|md))(?:[:：](\d+)(?:[-–](\d+))?)?/g;let from=0,m;
- while((m=pattern.exec(text))){inlineText(el,text.slice(from,m.index));fileReference(el,m[1],'',m[2],m[3]);from=pattern.lastIndex}inlineText(el,text.slice(from));
+ const pattern=/([A-Za-z0-9_./-]+\.(?:html|css|js|ts|tsx|jsx|json|py|md))(?:[:：](\d+)(?:[-–](\d+))?|`?\s*第\s*(\d+)(?:\s*[-–至]\s*(\d+))?\s*行)?/g;let from=0,m;
+ while((m=pattern.exec(text))){inlineText(el,text.slice(from,m.index));fileReference(el,m[1],'',m[2]||m[4],m[3]||m[5]);from=pattern.lastIndex}inlineText(el,text.slice(from));
 }
 function formatMessage(el,text){
  let fence=false,code=[],lastFile=null,unfenced=false;
@@ -145,10 +145,10 @@ function formatMessage(el,text){
  }
  emitCode();
 }
-function messageNode(m,ch){displayedCodeRefs=m.code_refs||[];const div=document.createElement('div');div.className='msg '+m.role;const b=document.createElement('b');b.textContent=m.role==='user'?'你':ch==='coding'?(task.mode==='opencode'?(task.coding_provider?.configured?'Coding · OpenCode':'Coding · OpenCode（待配置）'):'Coding Agent · 示例'):m.engine==='model'?'Teaching Agent':'Teaching Agent · 示例';div.append(b);const content=document.createElement('div');content.className='message-content';if(m.role==='user'){const p=document.createElement('p');p.textContent=m.content;content.append(p)}else if(m.content.startsWith('Teaching Agent 暂时未完成本次分析：')){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='历史调用未完成（保留原始记录）';details.append(summary,document.createTextNode(m.content));content.append(details)}else formatMessage(content,m.content);div.append(content);return div}
+function messageNode(m,ch){displayedCodeRefs=m.code_refs||[];const div=document.createElement('div');div.className='msg '+m.role;const b=document.createElement('b');b.textContent=m.role==='user'?'你':ch==='coding'?(task.mode==='opencode'?(task.coding_provider?.configured?'Coding · OpenCode':'Coding · OpenCode（待配置）'):'Coding Agent · 示例'):m.engine==='model'?'Teaching Agent':'Teaching Agent · 示例';div.append(b);const content=document.createElement('div');content.className='message-content';if(m.role==='user'){const p=document.createElement('p');p.textContent=m.content;content.append(p)}else if(m.content.startsWith('Teaching Agent 暂时未完成本次分析：')){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='历史调用未完成（保留原始记录）';details.append(summary,document.createTextNode(m.content));content.append(details)}else formatMessage(content,m.content);div.append(content);if(m.execution_warnings?.length){const warning=document.createElement('details');const title=document.createElement('summary');title.textContent='部分工具调用未成功，实际文件已保存，请验收时检查';warning.append(title,document.createTextNode(m.execution_warnings.map(x=>x.tool+'：'+x.error).join('\n')));div.append(warning)}if(ch==='coding'&&m.phase_report){const report=document.createElement('p');report.className='plan-choice-note';report.textContent='本轮对应计划 '+(m.phase_report.index+1)+'：'+m.phase_report.title+(task.coding_workflow?.checkpoints?.[m.phase_report.index]?.status==='accepted_by_student'?' · 验收通过':' · 已执行，待学生验收');div.append(report)}return div}
 function waitingNode(text){const row=document.createElement('div');row.className='waiting';row.setAttribute('role','status');row.textContent='◌ '+text;return row}
 function renderChats(){
- for(const ch of ['coding','teaching']){const el=$(ch+'-messages');const nearBottom=el.scrollHeight-el.scrollTop-el.clientHeight<100;el.replaceChildren();const messages=task.messages.filter(m=>m.channel===ch);const lastAssistant=messages.findLastIndex(m=>m.role==='assistant');messages.forEach((m,index)=>{const node=messageNode(m,ch);if(ch==='coding'&&index===lastAssistant&&task.mode==='opencode'&&!task.plan.length&&task.plan_draft?.length){const decision=task.plan_decision;if(decision?.choice==='revise'){const note=document.createElement('p');note.className='plan-choice-note';note.textContent='✕ 已选择修改，等待你补充意见';node.append(note)}else node.append(planChoiceNode());}el.append(node)});
+ for(const ch of ['coding','teaching']){const el=$(ch+'-messages');const nearBottom=el.scrollHeight-el.scrollTop-el.clientHeight<100;el.replaceChildren();const messages=task.messages.filter(m=>m.channel===ch);const lastAssistant=messages.findLastIndex(m=>m.role==='assistant');messages.forEach((m,index)=>{const node=messageNode(m,ch);if(ch==='coding'&&index===lastAssistant&&task.mode==='opencode'&&!task.plan.length&&task.plan_draft?.length){const decision=task.plan_decision;if(decision?.choice==='revise'){const note=document.createElement('p');note.className='plan-choice-note';note.textContent='✕ 已选择修改，等待你补充意见';node.append(note)}else node.append(planChoiceNode());}if(ch==='coding'&&index===lastAssistant&&currentPhaseCheckpoint())node.append(phaseChoiceNode());el.append(node)});
   if(ch==='coding'&&task.coding_run){const run=task.coding_run;if(['queued','running'].includes(run.status))el.append(waitingNode(run.detail||'Coding执行中'));if(run.status==='failed'){const error=document.createElement('p');error.className='reply-error';error.textContent=run.detail||'执行失败，阶段未推进';el.append(error)}}
   if(ch==='teaching'){
    const run=task.teaching_run;
@@ -189,12 +189,12 @@ function renderDevelopmentPlan(){
  $('steps').replaceChildren();
  function row(number,title,note,status){const li=document.createElement('li');li.className='milestone is-'+status;if(status==='active')li.setAttribute('aria-current','step');const n=document.createElement('strong');n.textContent=status==='done'?'✓':number;const body=document.createElement('div');const name=document.createElement('div');name.textContent=title;body.append(name);const small=document.createElement('small');small.textContent=note;body.append(small);li.append(n,body);$('steps').append(li);return body;}
  row('1','设置计划',rows.length?'计划已形成，可继续在聊天中调整':'在Coding聊天中交流目标',rows.length?'done':'active');
- const body=row('2','开发计划',allDone?'任务清单已完成，仍可检查与修改':rows.length?'已通过 '+done+' / '+rows.length+' · 待检查 '+reported:'等待生成',allDone?'done':rows.length?'active':'pending');
- const list=document.createElement('ol');list.className='phase-progress';const labels={done:'已完成',active:'进行中',pending:'未开始',review:'报告完成 · 待检查',cancelled:'已取消'};
+ const body=row('2','开发计划',allDone?'全部阶段已验收通过':rows.length?'已通过 '+done+' / '+rows.length+' · 待检查 '+reported:'等待生成',allDone?'done':rows.length?'active':'pending');
+ const list=document.createElement('ol');list.className='phase-progress';const labels={done:'验收通过',active:'执行中',pending:'未执行',review:'已执行 · 待验收',cancelled:'已取消'};
  rows.forEach((entry,i)=>{const item=document.createElement('li');item.className='phase-row is-'+entry.state+(entry.state==='done'?' done':entry.state==='active'?' current':'');if(entry.state==='active')item.setAttribute('aria-current','step');const num=document.createElement('b');num.className='phase-number';num.textContent=String(i+1);num.setAttribute('aria-label','第'+(i+1)+'项');const content=document.createElement('div');const title=document.createElement('span');title.textContent=entry.text;const status=document.createElement('small');status.textContent=labels[entry.state];content.append(title,status);const marker=document.createElement('span');marker.className='phase-marker';marker.textContent=entry.state==='active'?'◉':entry.state==='done'?'✓':entry.state==='review'?'○':'';marker.setAttribute('aria-label',labels[entry.state]);item.append(num,content,marker);list.append(item)});body.append(list);
  row('3','总结','暂不展开','pending');
  $('progress').textContent=rows.length?done+' / '+rows.length+' 已通过':'待设置';
- $('stage').textContent=['queued','running'].includes(task.coding_run?.status)?'● Coding处理中':allDone?'● 任务清单已完成':rows.length?'● 等待交流与审查':'● 等待需求';
+ $('stage').textContent=['queued','running'].includes(task.coding_run?.status)?'● Coding处理中':allDone?'● 全部阶段已验收通过':rows.length?'● 等待交流与审查':'● 等待需求';
  $('plan-confirm').hidden=true;$('run').hidden=true;
 }
 $('plan-confirm').onclick=()=>{confirmMode='plan';$('confirm').querySelector('p').textContent='先与教师讨论整体目标和拆分。确认后只保存计划，不执行代码。';$('confirm-run').textContent='确认计划';$('confirm').querySelector('h2').textContent='编辑并确认开发计划（每行一步）';$('instruction').value=(task.plan_draft||[]).join('\n');$('confirm').showModal()};
@@ -277,4 +277,22 @@ function planChoiceNode(){
   row.append(button);
  }
  return row;
+}
+
+function currentPhaseCheckpoint(){
+ if(task?.mode!=='opencode'||task.coding_workflow?.checkpoints?.[task.step]?.status!=='executed_pending_review')return null;
+ const checkpoint=task.coding_checkpoints?.at(-1);
+ return checkpoint?.kind==='development'&&checkpoint.stage_index===task.step?checkpoint:null;
+}
+function phaseChoiceNode(){
+ const checkpoint=currentPhaseCheckpoint();
+ const row=document.createElement('div');row.className='plan-choices';row.setAttribute('role','group');row.setAttribute('aria-label','检查当前开发阶段');
+ if(!checkpoint)return row;
+ const taskId=task.id,requestId=crypto.randomUUID(),last=task.step===task.plan.length-1;
+ const approve=document.createElement('button');approve.type='button';approve.className='plan-choice approve';approve.textContent=last?'✓ 本阶段通过，完成开发':'✓ 本阶段通过，继续下一阶段';
+ const revise=document.createElement('button');revise.type='button';revise.className='plan-choice revise';revise.textContent='✕ 需要修改';
+ approve.disabled=revise.disabled=busy||['queued','running'].includes(task.coding_run?.status)||['queued','running'].includes(task.teaching_run?.status);
+ approve.onclick=()=>perform(async()=>{const result=await api('/tasks/'+taskId+'/checkpoints/'+checkpoint.checkpoint_id+'/resume',{session_id:taskId,request_id:requestId,confirmed:true,teaching_completed:true,expected_code_hash:checkpoint.project_evidence.code_hash});return result.task;});
+ revise.onclick=()=>{const input=$('coding-input');input.placeholder='告诉 Coding 本阶段哪里需要修改，发送后会在当前阶段返工…';input.focus();toast('开发保持暂停，请在聊天里说明具体修改要求');};
+ row.append(approve,revise);return row;
 }
