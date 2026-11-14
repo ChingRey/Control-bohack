@@ -39,8 +39,8 @@ class TeacherProjectChatTests(unittest.TestCase):
    reply=teaching.run(t)
   self.assertIn('42',reply);self.assertEqual(before,t['files'])
   self.assertFalse(seen[0][1]['json_mode'])
-  names={x['function']['name'] for x in seen[0][1]['tools']}
-  self.assertEqual(names,{'read_project_file','read_message_history'})
+  self.assertIsNone(seen[0][1]['tools'])
+  self.assertEqual(len(seen),1)
   self.assertEqual(t['teaching']['turns'][-1]['result']['mode'],'project_chat')
  def test_teacher_write_call_is_rejected_and_read_uses_snapshot(self):
   t=self.task();ctx=teaching.context(t,'message');before=copy.deepcopy(t['files'])
@@ -57,9 +57,8 @@ class TeacherProjectChatTests(unittest.TestCase):
   ]}}]}, {'choices':[{'message':{'content':'Read-only review finished.'}}]}]
   def request(config,messages,*args,**kwargs):seen.append(copy.deepcopy(messages));return None
   with patch.object(teaching.providers,'request',side_effect=request),patch.object(teaching.providers,'normalize',side_effect=lambda config,x:x),patch.object(teaching,'request_model',side_effect=responses):
-   teaching.project_chat(agent,ctx,lambda *args:None)
+   with self.assertRaisesRegex(ValueError,'未提供工具'):
+    teaching.project_chat(agent,ctx,lambda *args:None)
   self.assertEqual(t['files'],before)
-  tool_messages=[m for m in seen[-1] if m['role']=='tool']
-  self.assertIn('export const height = 42;',tool_messages[0]['content'])
-  self.assertIn('error',tool_messages[1]['content'])
-  self.assertEqual([x['success'] for x in agent.tool_trace],[True,False])
+  self.assertEqual(len(seen),1)
+  self.assertEqual(agent.tool_trace,[])

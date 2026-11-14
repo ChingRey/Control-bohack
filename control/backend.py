@@ -277,11 +277,19 @@ def start_teaching(t, action='message'):
      row=next((r for r in trace if r['attempt']==detail['attempt']),None)
      if row is None:trace.append(dict(detail))
      else:row.update(detail)
+    elif stage=='experience_loaded':
+     fresh['teaching_run'].update(status='running',stage=stage,detail='项目教学经验已读取',experience_context=detail)
+    elif stage=='materials_ready':
+     fresh['teaching_run'].update(status='running',stage=stage,detail='重点源码、教学经验和知识材料已准备完成',context_materials=detail)
     elif stage=='streaming':
      fresh['teaching_run'].update(status='running',stage=stage,detail='正在生成回复',partial_reply=redact_message(detail))
     else:
      fresh['teaching_run'].update(status='running',stage=stage,detail=detail)
      if stage=='thinking':fresh['teaching_run'].pop('partial_reply',None)
+    if stage not in ('request_trace','streaming'):
+     trace=fresh['teaching_run'].setdefault('preparation_trace',[])
+     trace.append({'stage':stage,'at':time.time()})
+     del trace[:-12]
     save(fresh)
   progress.cancelled=signal.is_set
   try:
@@ -422,9 +430,19 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
  if checkpoint_operation is not None:packet['skill_unlock_notifications']=checkpoint_operation['skill_results']
  packet['recent_dialogue']=[{'role':m['role'],'content':m['content'][:4000]} for m in work['messages'] if m['channel']=='coding' and m.get('queue_status') not in ('queued','needs_retry')][-12:]
  def worker():
+  def coding_progress(update):
+   with task_lock(t['id']):
+    fresh=load(t['id']);current=fresh.get('coding_run',{})
+    if current.get('id')!=job['id'] or current.get('status')!='running':return
+    current.update({key:update[key] for key in ('stage','detail','model_rounds','completed_tools','elapsed_seconds') if key in update})
+    trace=current.setdefault('progress_trace',[])
+    trace.append({**update,'at':time.time()})
+    del trace[:-60]
+    save(fresh)
   try:
    if not chatting and not planning:packet['recent_dialogue']=[]
-   result=opencode_executor.execute(original,packet,planning or chatting or review_only,chatting or review_only,original_assets) if original_assets else opencode_executor.execute(original,packet,planning or chatting or review_only,chatting or review_only)
+   with opencode_executor.observe_progress(coding_progress):
+    result=opencode_executor.execute(original,packet,planning or chatting or review_only,chatting or review_only,original_assets) if original_assets else opencode_executor.execute(original,packet,planning or chatting or review_only,chatting or review_only)
    after_assets=result.get('binary_files',original_assets)
    with task_lock(t['id']):
     fresh=load(t['id'])
@@ -469,7 +487,7 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
     if not chatting and not planning and work.get('plan'):
      fresh['messages'][-1]['phase_report']={'index':work['step'],'title':work['plan'][work['step']],
         'status':'executed_pending_review','execution_status':'executed','acceptance_status':'not_accepted','changed_files':[c['file'] for c in fresh['changes'][len(work['changes']):]],'scope_verified':review_only}
-    fresh['coding_run'].update(status='completed',detail='计划第'+str(work['step']+1)+'项已暂停，等待检查' if not chatting and not planning and work.get('plan') else '已执行，暂停等待审查')
+    fresh['coding_run'].update(elapsed_seconds=round(time.time()-job['started_at'],1),status='completed',detail='计划第'+str(work['step']+1)+'项已暂停，等待检查' if not chatting and not planning and work.get('plan') else '已执行，暂停等待审查')
     if not chatting:
      checkpoint=checkpoint_events.record(fresh,job['id'],instruction,result['text'],original,result['files'],work['step'],'planning' if planning else 'development',result.get('events',[]),original_assets,after_assets)
      if checkpoint_operation is not None:
@@ -478,13 +496,19 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
     checkpoint_control.finish(fresh,job,'completed',job['id'] if not chatting else None)
     save(fresh)
     if not chatting:start_checkpoint_teaching(fresh)
+    elif fresh.get('checkpoint_delivery')!='manual':
+     try:start_teaching(fresh,'coding_discussion')
+     except Exception as exc:
+      fresh=load(t['id'])
+      fresh['teaching_run']={'id':str(uuid.uuid4()),'status':'failed','detail':'Coding回复已保存，教学交接未完成；可主动请教师讲解',**background_error(exc)}
+      save(fresh)
   except Exception as e:
    with task_lock(t['id']):
     fresh=load(t['id'])
     if fresh.get('coding_run',{}).get('id')==job['id']:
      skill_gateway.record(fresh,job['id'],work['step'],packet['learning_context']['skills'],'failed')
      detail=str(e) if isinstance(e,ValueError) else '执行器异常：'+type(e).__name__+'；本轮未完成'
-     fresh['coding_run'].update(status='failed',detail=detail)
+     fresh['coding_run'].update(status='failed',detail=detail,elapsed_seconds=round(time.time()-job['started_at'],1))
      checkpoint_control.finish(fresh,job,'failed',error=detail);save(fresh)
   finally:
    finish_queue_request(t['id'],'coding_run',job['id'])

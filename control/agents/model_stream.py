@@ -50,7 +50,7 @@ def read(response, budget, emit):
     def publish(force=False):
         nonlocal last_publish
         now = time.monotonic()
-        if force or now - last_publish >= .15:
+        if force or now - last_publish >= .35:
             emit('streaming', visible_text(text))
             last_publish = now
 

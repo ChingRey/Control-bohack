@@ -4,7 +4,7 @@ import json
 import re
 from . import checkpoints, coding_workflow, knowledge, memory
 
-SOURCE_BUDGET = 6500
+SOURCE_BUDGET = 3600
 MAX_FUTURE_STEPS = 3
 
 
@@ -30,6 +30,57 @@ def compact_scope(task):
         'future':future[:MAX_FUTURE_STEPS],
         'future_omitted_count':max(0,len(future)-MAX_FUTURE_STEPS)}
 
+
+def focused_source(task, question, changes):
+    """Select complete current lines locally; deleted lines stay in checkpoint evidence."""
+    source = task.get('files', {})
+    ranked = {}
+    explicit = set()
+    def add(name, number, priority, radius=3):
+        lines = source[name].splitlines()
+        for n in range(max(1, number-radius), min(len(lines), number+radius)+1):
+            score = priority if n == number else priority-20-abs(n-number)
+            ranked[(name,n)] = max(score, ranked.get((name,n), -1))
+    for name, body in source.items():
+        match = re.search(r'(?<![\w/.-])'+re.escape(name)+r'(?![\w/.-])(?::(\d+)(?:-(\d+))?)?', question)
+        if match:
+            explicit.add(name)
+            if match[1]:
+                start=int(match[1]);end=min(int(match[2] or start),start+60)
+                for n in range(start,end+1):add(name,n,120)
+            else:
+                for n in range(1,min(24,len(body.splitlines()))+1):add(name,n,45,0)
+    for change in changes:
+        name=change.get('file')
+        if name not in source:continue
+        current=None;found=False
+        for line in change.get('diff','').splitlines():
+            hunk=re.match(r'^@@ -\d+(?:,\d+)? \+(\d+)',line)
+            if hunk:current=int(hunk[1]);add(name,current,80);continue
+            if current is None:continue
+            if line.startswith('+') and not line.startswith('+++'):
+                add(name,current,100);current+=1;found=True
+            elif line.startswith(' '):current+=1
+            elif line.startswith('-') and not line.startswith('---'):add(name,current,90)
+        if not found and change.get('before_hash') is None:
+            for n in range(1,min(24,len(source[name].splitlines()))+1):add(name,n,50,0)
+    terms=set(re.findall(r'[A-Za-z_$][A-Za-z0-9_$]{2,}',question))
+    for name,body in source.items():
+        hits=0
+        for n,line in enumerate(body.splitlines(),1):
+            if terms.intersection(re.findall(r'[A-Za-z_$][A-Za-z0-9_$]{2,}',line)):
+                add(name,n,110 if name in explicit else 65,2);hits+=1
+                if hits>=12:break
+    selected={}
+    for (name,n),score in sorted(ranked.items(),key=lambda x:(-x[1],x[0][0],x[0][1])):
+        if name not in selected and len(selected)>=6:continue
+        candidate=copy.deepcopy(selected)
+        candidate.setdefault(name,[]).append({'line':n,'text':source[name].splitlines()[n-1]})
+        if memory.size(candidate)>SOURCE_BUDGET or memory.size(candidate[name])>1800:continue
+        selected=candidate
+    for rows in selected.values():rows.sort(key=lambda r:r['line'])
+    return selected
+
 def build(task, action):
     source = task.get('files', {})
     event = checkpoints.view(task, source)
@@ -37,30 +88,8 @@ def build(task, action):
     selected = {}
     evidence = (event or {}).get('project_evidence', {})
     changes = evidence.get('changes', [])
-    # Send current source around actual diff hunks, not each file's first 120 lines.
-    # The diff itself stays in storage, so inserted source is not sent twice.
     previous_hash=task.get('teaching',{}).get('continuity',{}).get('code_hash')
     changed_since_last_read=previous_hash!=knowledge.code_hash(source)
-    if review and (changed_since_last_read or action=='review') and not evidence.get('stale_for_code'):
-        per_file_budget = max(800, SOURCE_BUDGET // max(1, sum(c['file'] in source for c in changes)))
-        for change in changes:
-            name = change['file']
-            if name not in source:
-                continue
-            lines = source[name].splitlines()
-            wanted = set()
-            for match in re.finditer(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@', change.get('diff', ''), re.M):
-                start = int(match[1]); count = int(match[2] or 1)
-                wanted.update(range(max(1, start - 10), min(len(lines), start + max(count, 1) + 9) + 1))
-            if not wanted and change.get('before_hash') is None:
-                wanted.update(range(1, min(60,len(lines))+1))
-            for number in sorted(wanted):
-                row = {'line': number, 'text': lines[number - 1]}
-                candidate = copy.deepcopy(selected)
-                candidate.setdefault(name, []).append(row)
-                if memory.size(candidate) > SOURCE_BUDGET or memory.size(candidate[name]) > per_file_budget:
-                    break
-                selected = candidate
     compact_event = None
     if event:
         compact_event = {k: event[k] for k in ('checkpoint_id', 'stage_index', 'kind')}
@@ -79,7 +108,7 @@ def build(task, action):
             'test_records': evidence.get('test_records', [])[-1:],
             'runtime_observations': evidence.get('runtime_observations', [])[-2:],
             'binary_changes': evidence.get('binary_changes', [])[:5],
-            'notice': '执行记录和浏览器观察未经独立验证；源代码是快照，省略部分可按行读取。'}
+            'notice': '执行记录和浏览器观察未经独立验证；源码仅为重点片段，省略部分不作为判断依据。'}
     history = task['messages']
     eligible = [i for i,m in enumerate(history) if m.get('queue_status') not in ('queued','needs_retry')]
     focus = next((i for i in range(len(history)-1, -1, -1) if i in eligible and history[i]['role'] == 'user' and
@@ -95,26 +124,9 @@ def build(task, action):
         ids.add(initial)
     if focus is not None:
         ids.add(focus)
-    # A named file is unambiguous evidence: preload its requested lines locally,
-    # avoiding a model round trip just to discover and read that same path.
-    # Never guess files for a general question or load paths outside this snapshot.
-    if not review and focus is not None:
-        question = history[focus]['content']
-        for name in source:
-            match = re.search(r'(?<![\w/.-])'+re.escape(name)+r'(?![\w/.-])(?::(\d+))?', question)
-            if not match:
-                continue
-            start = max(1, int(match[1]) - 10) if match[1] else 1
-            rows = []
-            for number, line in enumerate(source[name].splitlines(), 1):
-                if not start <= number < start + 80:
-                    continue
-                candidate = {**selected, name: rows + [{'line': number, 'text': line}]}
-                if memory.size(candidate) > SOURCE_BUDGET:
-                    break
-                rows = candidate[name]
-            if rows:
-                selected[name] = rows
+    question = history[focus]['content'] if focus is not None else ''
+    needs_code = review or bool(re.search(r'代码|源码|修改|改动|报错|函数|变量|bug|error', question, re.I))
+    selected = focused_source(task, question, changes if needs_code and not evidence.get('stale_for_code') else [])
     messages = []
     seen = set()
     for i in sorted(ids):
@@ -141,8 +153,8 @@ def build(task, action):
                              'relevant_files':relevant_files,
                              'omitted_file_count':max(0,len(source)-100),
                              'total_file_count': len(source),
-                             'read_tool': 'read_project_file',
-                             'notice': '保留紧凑文件索引，仅预载本轮相关源码；未显示不等于不存在，可按路径和行号只读补查。'},
+                             'selection_mode': 'local_focus_and_diff',
+                             'notice': '仅提供本轮重点源码和修改行附近的完整行；省略部分不代表不存在。本轮不调用读取工具，证据不足时说明缺少什么，不猜测源码或行号。'},
            'code_hash': knowledge.code_hash(source),
            'messages': messages,
            'student_evidence': [{'id': m['id']} for m in messages if m['role'] == 'user'],
@@ -163,7 +175,7 @@ def build(task, action):
         raise ValueError('本轮教学材料超过80000个JSON字符，请缩小问题范围；原始记录已保留')
     ctx['context_usage'] = {'json_characters': memory.size(ctx), 'limit_characters': memory.MAX_CONTEXT_CHARS,
                             'counter': 'characters_not_tokens', 'loaded_message_ids': [m['id'] for m in messages],
-                            'input_revision': 'compact-v1', 'source_budget_characters': SOURCE_BUDGET}
+                            'input_revision': 'single-pass-focus-v2', 'source_budget_characters': SOURCE_BUDGET}
     return ctx
 
 

@@ -229,9 +229,11 @@ function messageNode(m,ch){displayedCodeRefs=m.code_refs||[];const div=document.
 function waitingNode(text){const row=document.createElement('div');row.className='waiting';row.setAttribute('role','status');row.textContent='◌ '+text;return row}
 function renderChats(){
  for(const ch of ['coding','teaching']){const el=$(ch+'-messages');const nearBottom=el.scrollHeight-el.scrollTop-el.clientHeight<100;el.replaceChildren();const messages=task.messages.filter(m=>m.channel===ch);const lastAssistant=messages.findLastIndex(m=>m.role==='assistant');messages.forEach((m,index)=>{const node=messageNode(m,ch);if(ch==='coding'&&index===lastAssistant&&task.mode==='opencode'){const allPhasesAccepted=task.plan?.length>0&&task.step>=task.plan.length;const choice=!task.plan.length&&task.plan_draft?.length?planChoiceNode():currentPhaseCheckpoint()?phaseChoiceNode():!allPhasesAccepted&&task.capabilities?.coding_reply_accept&&messages.slice(0,index).some(row=>row.role==='user'&&!['queued','needs_retry'].includes(row.queue_status))?replyChoiceNode(m):null;if(choice)node.append(choice);}el.append(node)});
-  if(ch==='coding'&&task.coding_run){const run=task.coding_run;if(['queued','running'].includes(run.status))el.append(waitingNode(run.detail||'Coding执行中'));if(run.status==='failed'){const error=document.createElement('p');error.className='reply-error';error.textContent=run.detail||'执行失败，阶段未推进';el.append(error)}}
+  if(ch==='coding'&&task.coding_run){const run=task.coding_run;if(['queued','running'].includes(run.status))el.append(waitingNode((run.detail||'Coding执行中')+' · '+Math.max(0,Math.floor(Date.now()/1000-run.started_at))+' 秒'+(run.model_rounds?' · 已完成 '+run.model_rounds+' 次模型生成':'')+(run.completed_tools?' · '+run.completed_tools+' 次工具操作完成':'')));if(run.status==='failed'){const error=document.createElement('p');error.className='reply-error';error.textContent=run.detail||'执行失败，阶段未推进';el.append(error)}}
   if(ch==='teaching'){
    const run=task.teaching_run;
+   if(run?.experience_context){const experience=run.experience_context,info=document.createElement('p');info.className='plan-choice-note';info.textContent='本轮已读取项目教学经验库 v'+experience.revision+' · '+(experience.entries.map(entry=>(entry.title||entry.id)+' r'+entry.revision).join('、')||'当前模式或问题未选中条目');el.append(info)}
+   if(run?.context_materials&&['queued','running'].includes(run.status)){const materials=run.context_materials;el.append(waitingNode('材料准备完成：'+materials.source_files+' 个文件、'+materials.source_lines+' 行重点源码；教学经验和知识已就绪'))}
    if(run?.partial_reply&&['queued','running','failed'].includes(run.status)){
     const preview=messageNode({role:'assistant',engine:'model',content:run.partial_reply},'teaching');preview.classList.add('streaming-reply');preview.setAttribute('aria-label',run.status==='failed'?'未完成的教学回复':'正在生成的教学回复');el.append(preview);
    }
@@ -391,10 +393,19 @@ function replyChoiceNode(message){
  const id=task.messages.indexOf(message),taskId=task.id,requestId=newRequestId();
  const accepted=task.coding_reply_acceptances?.some(r=>r.message_id===id),finished=task.plan.length&&task.step>=task.plan.length;
  const button=document.createElement('button');button.type='button';button.className='plan-choice approve';
- button.textContent=finished?'✓ 阶段均已验收':accepted?'✓ 已确认':'✓ 这版可以';
+ button.textContent=finished?'✓ 阶段均已验收':accepted?'✓ 回复已确认':'✓ 确认这条回复';
  button.disabled=!!(accepted||finished||busy||['coding_run'].some(k=>['queued','running'].includes(task[k]?.status)));
  button.onclick=()=>perform(()=>api('/tasks/'+taskId+'/coding/reply-accept',{message_id:id,expected_content:message.content,request_id:requestId}));
- row.append(button);return row;
+ row.append(button);
+ if(!finished&&task.plan.length&&!currentPhaseCheckpoint()){
+  const run=document.createElement('button');run.type='button';run.className='plan-choice approve';run.textContent=task.coding_run?.status==='failed'?'重试执行当前阶段':'执行当前阶段';
+  run.disabled=!!(busy||['queued','running'].includes(task.coding_run?.status));
+  const expectedStep=task.step,instruction=task.plan[expectedStep];
+  run.onclick=()=>perform(()=>api('/tasks/'+taskId+'/steps/run',{confirmed:true,expected_step:expectedStep,instruction}));
+  row.append(run);
+ }
+ const note=document.createElement('p');note.className='plan-choice-note';note.textContent=accepted?'这条回复已确认。继续开发请点击“执行当前阶段”，或发送调整要求。':'确认回复只记录你的认可；执行阶段需要单独点击。';row.append(note);
+ return row;
 }
 
 function currentPhaseCheckpoint(){
