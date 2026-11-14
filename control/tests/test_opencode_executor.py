@@ -13,6 +13,8 @@ class ExecutorTests(unittest.TestCase):
    self.assertNotIn('test-secret',' '.join(cmd))
    self.assertEqual(kw['env']['CONTROL_CODING_KEY'],'test-secret')
    self.assertNotIn('OPENAI_API_KEY',kw['env'])
+   self.assertEqual(kw['env']['OPENCODE_DISABLE_MODELS_FETCH'],'true')
+   self.assertEqual(kw['env']['OPENCODE_DISABLE_AUTOUPDATE'],'true')
    self.assertEqual(json.loads(kw['env']['OPENCODE_CONFIG_CONTENT'])['permission']['*'],'deny')
    from pathlib import Path
    (Path(kw['cwd'])/'app.js').write_text('changed',encoding='utf-8')
