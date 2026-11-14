@@ -98,4 +98,4 @@ Teaching新增provider=siliconflow，固定https://api.siliconflow.cn/v1/chat/co
 
 ## 独立 TeachingService V0.2.1
 
-新增 `/api/tasks/:id/teaching-v021` 独立Mock边界，不替换旧内部schema_version=1。会话、四端口、真实证据/教学历史映射、策略授权和暂停恢复见 [TEACHING_V021_INTEGRATION.md](TEACHING_V021_INTEGRATION.md)。未配置项目保持原有真实教师路径，Mock评价不更新正式掌握或解锁Skill。
+`/api/tasks/:id/teaching-v021` 为显式启用的独立联调接口，采用规则选课和 Mock 教学、评价、演化。学生可在选课结果为跳过教学时确认继续开发。会话、证据、历史、策略授权和暂停恢复见 [V0.2.1 接口交接说明](TEACHING_V021_INTEGRATION.md)。

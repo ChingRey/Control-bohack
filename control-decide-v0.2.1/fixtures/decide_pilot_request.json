@@ -1,0 +1,302 @@
+{
+  "schema_version": "0.2.1",
+  "request_id": "pilot-l13",
+  "context": {
+    "context_id": "ctx-001",
+    "session_id": "sess-001",
+    "checkpoint_id": "cp-001",
+    "project": {
+      "stage": "verification",
+      "task_id": "task-001",
+      "goal": "制作一个可以跳跃躲避障碍的小游戏",
+      "description": null,
+      "evidence_refs": [
+        "test-collision"
+      ]
+    },
+    "learner": {
+      "student_id": "learner-01",
+      "knowledge_states": [
+        {
+          "knowledge_point_id": "L13",
+          "level": "needs_support",
+          "evidence_refs": [
+            "eval-l13"
+          ]
+        }
+      ],
+      "prior_help_count": 2
+    },
+    "course": {
+      "catalog_version": "pilot-official-eight",
+      "candidate_capability_ids": [
+        "requirements",
+        "code-understanding",
+        "diagnosis",
+        "change-instruction",
+        "verification"
+      ],
+      "target_capability_ids": [],
+      "completed_capability_ids": []
+    },
+    "history": {
+      "recent_decision_ids": [],
+      "recent_evaluation_ids": []
+    },
+    "evidence": [
+      {
+        "id": "test-collision",
+        "source": "project",
+        "kind": "test",
+        "summary": "本轮碰撞测试只覆盖角色与障碍物明显重叠的情况",
+        "content": "角色与障碍物明显重叠时，游戏结束。刚好接触的情形还未验证。"
+      },
+      {
+        "id": "eval-l13",
+        "source": "assessment",
+        "kind": "evaluation",
+        "summary": "模拟学生画像：能说出正常用例，尚未提出可区分的碰撞边界用例。"
+      }
+    ]
+  },
+  "catalog": {
+    "version": "pilot-official-eight",
+    "capabilities": [
+      {
+        "id": "requirements",
+        "title": "明确需求与验收",
+        "behaviors": [
+          "独立说清目标、范围和至少一条可检查的验收条件"
+        ],
+        "knowledge_point_ids": [
+          "L01",
+          "L02"
+        ],
+        "rubric_id": "requirements"
+      },
+      {
+        "id": "code-understanding",
+        "title": "理解代码与数据流",
+        "behaviors": [
+          "根据真实代码解释执行顺序和关键状态"
+        ],
+        "knowledge_point_ids": [
+          "L11"
+        ],
+        "rubric_id": "code-understanding"
+      },
+      {
+        "id": "diagnosis",
+        "title": "根据证据定位问题",
+        "behaviors": [
+          "区分现象与假设，能寻找证据解释原因"
+        ],
+        "knowledge_point_ids": [
+          "L14"
+        ],
+        "rubric_id": "diagnosis"
+      },
+      {
+        "id": "change-instruction",
+        "title": "组织修改要求",
+        "behaviors": [
+          "给出与当前工程一致、具体且有理由的修改要求"
+        ],
+        "knowledge_point_ids": [
+          "L10",
+          "L12"
+        ],
+        "rubric_id": "change-instruction"
+      },
+      {
+        "id": "verification",
+        "title": "设计验证与迁移",
+        "behaviors": [
+          "独立提出正常、边界及相关功能检查，并在新情境运用"
+        ],
+        "knowledge_point_ids": [
+          "L13",
+          "L15"
+        ],
+        "rubric_id": "verification"
+      }
+    ],
+    "knowledge_points": [
+      {
+        "id": "L01",
+        "capability_id": "requirements",
+        "title": "把大想法缩成一个核心操作",
+        "prerequisites": [],
+        "project_stages": [
+          "planning"
+        ]
+      },
+      {
+        "id": "L02",
+        "capability_id": "requirements",
+        "title": "把愿望写成可观察的验收",
+        "prerequisites": [],
+        "project_stages": [
+          "planning",
+          "verification"
+        ]
+      },
+      {
+        "id": "L11",
+        "capability_id": "code-understanding",
+        "title": "读懂少量相关代码",
+        "prerequisites": [],
+        "project_stages": [
+          "implementation",
+          "debugging"
+        ]
+      },
+      {
+        "id": "L14",
+        "capability_id": "diagnosis",
+        "title": "用证据排错，不连续猜补丁",
+        "prerequisites": [],
+        "project_stages": [
+          "debugging"
+        ]
+      },
+      {
+        "id": "L10",
+        "capability_id": "change-instruction",
+        "title": "向Coding发出一次清楚的小任务",
+        "prerequisites": [],
+        "project_stages": [
+          "planning",
+          "implementation",
+          "debugging"
+        ]
+      },
+      {
+        "id": "L12",
+        "capability_id": "change-instruction",
+        "title": "区分真正的问题与风格偏好",
+        "prerequisites": [],
+        "project_stages": [
+          "implementation",
+          "verification"
+        ]
+      },
+      {
+        "id": "L13",
+        "capability_id": "verification",
+        "title": "正常、边界、失败各测一次",
+        "prerequisites": [],
+        "project_stages": [
+          "verification"
+        ]
+      },
+      {
+        "id": "L15",
+        "capability_id": "verification",
+        "title": "修复后的回归与版本恢复",
+        "prerequisites": [
+          "L13"
+        ],
+        "project_stages": [
+          "verification"
+        ]
+      }
+    ],
+    "rubrics": [
+      {
+        "id": "requirements",
+        "version": 1,
+        "capability_id": "requirements",
+        "criteria": [
+          {
+            "id": "L01",
+            "description": "学生能说明取舍及不做的内容。",
+            "max_score": 1
+          },
+          {
+            "id": "L02",
+            "description": "验收描述可由另一个人照着执行。",
+            "max_score": 1
+          }
+        ],
+        "pass_score": 2
+      },
+      {
+        "id": "code-understanding",
+        "version": 1,
+        "capability_id": "code-understanding",
+        "criteria": [
+          {
+            "id": "L11",
+            "description": "引用当前文件真实行号并连起因果。",
+            "max_score": 1
+          }
+        ],
+        "pass_score": 1
+      },
+      {
+        "id": "diagnosis",
+        "version": 1,
+        "capability_id": "diagnosis",
+        "criteria": [
+          {
+            "id": "L14",
+            "description": "能说出观察和结论之间的关系。",
+            "max_score": 1
+          }
+        ],
+        "pass_score": 1
+      },
+      {
+        "id": "change-instruction",
+        "version": 1,
+        "capability_id": "change-instruction",
+        "criteria": [
+          {
+            "id": "L10",
+            "description": "能限定一轮任务，并辨认Agent越界。",
+            "max_score": 1
+          },
+          {
+            "id": "L12",
+            "description": "指出相关文件和验证办法，不只评价长短美观。",
+            "max_score": 1
+          }
+        ],
+        "pass_score": 2
+      },
+      {
+        "id": "verification",
+        "version": 1,
+        "capability_id": "verification",
+        "criteria": [
+          {
+            "id": "L13",
+            "description": "测试绑定当前版本，断言能判别错误。",
+            "max_score": 1
+          },
+          {
+            "id": "L15",
+            "description": "能区分代码恢复、数据变化和聊天记录。",
+            "max_score": 1
+          }
+        ],
+        "pass_score": 2
+      }
+    ]
+  },
+  "content_policy": {
+    "type": "content_policy",
+    "id": "default-content",
+    "version": 1,
+    "rules": [
+      {
+        "when": "学生缺少验收条件概念且当前有计划可审查",
+        "action": "优先教授验收标准"
+      }
+    ],
+    "stop_conditions": [
+      "缺少可靠证据则跳过教学"
+    ]
+  }
+}

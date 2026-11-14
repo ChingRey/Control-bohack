@@ -1,6 +1,6 @@
 # V0.2.1 独立接口集成（2026-11-14）
 
-已新增四接口Mock边界，保留原站内部schema_version=1和只读Teaching。项目需显式启用，演示课程/评分不得用于正式认证或Skill解锁。接入、启动授权、真实HTTP/浏览器/Windows asyncio/CLI验收与限制见 [接口交接说明](docs/TEACHING_V021_INTEGRATION.md)。
+项目可显式启用独立教学接口。`decide()` 根据检查点、课程和学习状态选课，`teach()`、`evaluate()`、`evolve()` 使用 Mock 联调。启动、恢复与验收见 [接口交接说明](docs/TEACHING_V021_INTEGRATION.md)。
 
 Teaching单次网络等待默认90秒、整轮预算240秒，可配置；Coding默认900秒不变。教师失败提示已区分服务HTTP状态、超时和网络错误。旧文档中30秒/120秒描述不再适用于本版本。
 

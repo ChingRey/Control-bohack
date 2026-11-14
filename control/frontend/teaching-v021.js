@@ -1,4 +1,4 @@
-/* Independent Mock integration console, separate from ordinary teaching chat. */
+/* V0.2.1 integration console. */
 async function v021Request(operation,body){
  const path='/api/tasks/'+task.id+'/teaching-v021'+(operation?'/'+operation:'');
  const response=await fetch(path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
@@ -7,7 +7,9 @@ async function v021Request(operation,body){
 async function v021Refresh(){
  const value=await v021Request('');
  const current=value.active_strategy;
- $('v021-status').textContent='模式：'+value.mode+'（联调不认证能力、不解锁Skill）\n'+(value.configured?'已配置隔离Mock课程':'尚未配置')+'\n当前策略：'+(current?current.id+' v'+current.version:'未分配')+'\n已执行动作：'+(value.turns?.length||0)+'；评价记录：'+(value.evaluations?.length||0);
+ const decision=value.decision;
+ const decisionStatus=decision?(decision.teach?'\n教学目标：'+decision.objective:'\n本轮跳过教学：'+decision.reason):'';
+ $('v021-status').textContent='模式：'+value.mode+'（联调不认证能力、不解锁Skill）\n'+(value.configured?'已配置联调课程':'尚未配置')+decisionStatus+'\n当前策略：'+(current?current.id+' v'+current.version:'未分配')+'\n已执行动作：'+(value.turns?.length||0)+'；评价记录：'+(value.evaluations?.length||0);
  const failed=Object.entries(value.requests||{}).filter(([id,r])=>r.status==='failed');
  $('v021-retries').replaceChildren();
  for(const [id,row] of failed){const button=document.createElement('button');button.textContent='重试 '+row.operation+' · '+id;button.onclick=()=>v021Action(row.operation,{...row.body,retry:true});$('v021-retries').append(button)}
@@ -31,4 +33,4 @@ for(const operation of ['configure','decide','teach','evolve'])$('v021-'+operati
 $('v021-respond').onclick=async()=>{const input=$('v021-message');if(!input.value.trim())return;await v021Action('respond',{message:input.value});input.value=''};
 $('v021-formative').onclick=()=>v021Action('evaluate',{assessment_mode:'formative'});
 $('v021-transfer').onclick=()=>v021Action('evaluate',{assessment_mode:'independent_transfer'});
-$('v021-resume').onclick=()=>{if(confirm('确认教学检查点结束，并允许Coding继续下一阶段？Mock评价不会解锁Skill。'))v021Action('resume',{confirmed:true,teaching_completed:true})};
+$('v021-resume').onclick=()=>{if(confirm('确认处理完当前检查点，并允许 Coding 继续开发？'))v021Action('resume',{confirmed:true,teaching_completed:true})};

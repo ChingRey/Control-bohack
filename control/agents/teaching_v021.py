@@ -11,14 +11,22 @@ import time
 import uuid
 from http.cookies import SimpleCookie
 from pathlib import Path
-from .teaching_contract_v021 import contracts as C, validator, mock_service
+from .teaching_contract_v021 import contracts as C, validator
+from .teaching_service import DecideTeachingService
 from . import project_files, project_safety, knowledge
 
-SERVICE_FACTORY = mock_service.MockTeachingService
+SERVICE_FACTORY = DecideTeachingService
 SERVICE_MODE = 'mock'
 APPROVED_LIBRARY = None
 SESSIONS = {}
 COOKIE = 'control_v021_session'
+
+DEMO_EDGE_CASES = {
+    'knowledge_point_id': 'edge-cases',
+    'concepts': ['边界情形指刚好达到或越过功能处理条件的输入或操作。'],
+    'examples': ['列表从一个项目变为空时，界面应显示空列表提示。'],
+    'misconceptions': ['只重复常见输入，遗漏空值或临界值。'],
+}
 
 class AccessDenied(PermissionError):pass
 
@@ -109,7 +117,7 @@ def configure(task):
     for item in req['strategy_candidates']+alternate:
         if (item['id'],item['version']) not in {(r['id'],r['version']) for r in strategies}: strategies.append(item)
     s['library']={'catalog':fixture('course_catalog'),'content_policy':fixture('content_policy'),
-        'strategies':strategies,'knowledge_packages':req['knowledge_packages'],
+        'strategies':strategies,'knowledge_packages':req['knowledge_packages']+[copy.deepcopy(DEMO_EDGE_CASES)],
         'approval':{'status':'approved_for_mock_integration_only','production_approved':False}}
 
 
@@ -128,15 +136,22 @@ def freeze(task, backend):
         sources[eid]=value
         evidence.append({'id':eid,'source':source,'kind':kind,'summary':text(summary),
             'content':text(canonical(value),5000),'artifact_ref':eid})
-    add('project','plan','Current confirmed plan and current step',{'plan':task.get('plan',[]),'step':task['step']})
-    add('project','code_diff','Actual persisted Coding checkpoint',checkpoint)
+    planning = checkpoint.get('kind') == 'planning'
+    plan = task.get('plan_draft') if planning else task.get('plan')
+    if plan:
+        add('project','plan','Saved plan draft' if planning else 'Current confirmed plan and current step',
+            {'plan':plan,'step':task['step']})
+    project_evidence = checkpoint['project_evidence']
+    if project_evidence.get('changes') or project_evidence.get('binary_changes'):
+        add('project','code_diff','Actual persisted Coding checkpoint',checkpoint)
+    version = backend.workflow.digest(files, assets)
     for row in task.get('execution_records',[])[-3:]+task.get('browser_records',[])[-3:]+task.get('behavior_records',[])[-3:]:
-        if row.get('hash')==backend.workflow.digest(files,assets):add('project','test','Version-matched record; preserve reported verification provenance',row)
+        if row.get('hash')==version:add('project','test','Version-matched record; preserve reported verification provenance',row)
     for i,m in list(enumerate(task['messages']))[-12:]:
         if m.get('role')=='user' and m.get('queue_status') not in ('queued','needs_retry'):
             add('learner','student_message','Saved student message',{'message_id':'message-'+str(i),'channel':m['channel'],'content':m['content']})
     context={'context_id':context_id,'session_id':task['id'],'checkpoint_id':checkpoint['checkpoint_id'],
-        'project':{'stage':('planning','implementation','implementation','verification','verification')[task.get('workflow',{}).get('stage',0)],
+        'project':{'stage':'planning' if planning else ('planning','implementation','implementation','verification','verification')[task.get('workflow',{}).get('stage',0)],
             'task_id':task['id'],'goal':text(checkpoint.get('user_requirement') or task['title']),
             'description':text(checkpoint['task_description']),'evidence_refs':[e['id'] for e in evidence if e['source']=='project']},
         'learner':{'student_id':task.get('student_id') or 'local-'+task['id'],'knowledge_states':[],'prior_help_count':len(s['turns'])},
@@ -148,9 +163,10 @@ def freeze(task, backend):
     return context
 
 
-def current(task, backend):
+def current(task, backend, *, allow_skip=False):
     s=state(task);decision=s['decisions'].get(s.get('active_decision'))
-    if not decision or not decision['teach']:raise ValueError('no active teaching decision')
+    if decision is None:raise ValueError('no active teaching decision')
+    if not decision['teach'] and not allow_skip:raise ValueError('current decision skipped teaching')
     frozen=s['contexts'][decision['context_id']]
     files,assets=project_files.scan(backend.project(task['id']))
     if frozen['code_hash']!=knowledge.code_hash(files) or frozen['asset_hash']!=project_files.asset_hash(assets):
@@ -180,12 +196,18 @@ def build_request(task, operation, rid, body, backend):
     decision,context=current(task,backend)
     if operation=='teach':
         past=history(s,decision['decision_id']);active=s.get('active_strategy');last=past['recent_turns'][-1] if past['recent_turns'] else None
+        selected = set(decision['knowledge_point_ids'])
+        packages = [p for p in lib['knowledge_packages'] if p['knowledge_point_id'] in selected]
+        if ('edge-cases' in selected and lib.get('approval', {}).get('status') == 'approved_for_mock_integration_only'
+                and not any(p['knowledge_point_id'] == 'edge-cases' for p in packages)):
+            # Previously configured demo projects only stored the acceptance-criteria package.
+            packages.append(copy.deepcopy(DEMO_EDGE_CASES))
         grant=next((g for g in s['switch_grants'] if not g.get('consumed') and g['decision_id']==decision['decision_id']),None)
         request.update(context=context,decision=decision,phase=body.get('phase','knowledge_teaching'),
             turn_index=len([r for r in s['turns'] if r['decision_id']==decision['decision_id']]),
             strategy_candidates=[p for p in lib['strategies'] if decision['capability_id'] in p['capability_ids']],
             active_strategy=active,allow_strategy_switch=bool(grant and active),teaching_history=past,
-            knowledge_packages=[p for p in lib['knowledge_packages'] if p['knowledge_point_id'] in decision['knowledge_point_ids']],
+            knowledge_packages=packages,
             last_student_message=last.get('student_reply') if last else None,
             latest_evaluation_id=past['recent_evaluations'][-1]['evaluation_id'] if past['recent_evaluations'] else None)
     elif operation=='evaluate':
@@ -288,8 +310,8 @@ def command(task, operation, body, backend):
     if backend.task_busy(task):raise ValueError('task is busy; retry after current operation')
     if operation=='resume':
         # Existing checkpoint state machine owns exactly-once resume. Never accept skill_unlocks.
-        decision,context=current(task,backend)
-        if not any(t['decision_id']==decision['decision_id'] for t in s['turns']):raise ValueError('execute teaching action before resume')
+        decision,context=current(task,backend,allow_skip=True)
+        if decision['teach'] and not any(t['decision_id']==decision['decision_id'] for t in s['turns']):raise ValueError('execute teaching action before resume')
         frozen=s['contexts'][context['context_id']]
         s['requests'][rid]={'operation':operation,'fingerprint':fingerprint,'status':'running','body':copy.deepcopy(body),'mode':SERVICE_MODE}
         backend.save(task)
@@ -351,6 +373,7 @@ def get_view(task):
     if not s:return {'schema_version':'0.2.1','configured':False,'mode':SERVICE_MODE}
     return {'schema_version':'0.2.1','configured':bool(s.get('library')),'mode':s['mode'],
         'active_decision':s.get('active_decision'),'active_strategy':s.get('active_strategy'),
+        'decision':s['decisions'].get(s.get('active_decision')),
         'assignments':s['assignments'],'turns':s['turns'],'evaluations':s['evaluations'],'proposals':s['proposals'],
         'experiments':s['experiments'],'requests':s['requests'],'contexts':s['contexts'],
         'applied_mastery':False,'skill_unlocks':[]}

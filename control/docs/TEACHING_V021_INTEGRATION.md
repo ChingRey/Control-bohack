@@ -2,9 +2,9 @@
 
 ## 范围与版本
 
-独立边界为 `agents/teaching_v021.py`，四个异步端口仍是公共 TeachingService 的 decide/teach/evaluate/evolve。旧 checkpoint/learning/memory 的 schema_version=1 保留。公共包放在 `agents/teaching_contract_v021/public/`，源文件和Schema保持原字节，外层 __init__.py 仅解决公共包绝对 import 的命名空间隔离，不修改公共类型。包内示例不是正式课程。
+独立边界为 `agents/teaching_v021.py`，四个异步端口仍是公共 TeachingService 的 decide/teach/evaluate/evolve。旧 checkpoint/learning/memory 的 schema_version=1 保留。公共包统一使用 `agents/teaching_contract_v021/public/`，外层 `__init__.py` 提供命名空间隔离。公共类型、校验器、Mock 和 Schema 由这份包提供。
 
-当前仅接入确定性 Mock，原有真实自然语言 Teaching 路径保留。只有明确配置 V0.2.1 的项目使用新边界；默认普通项目不被替换成Mock。新建分支 integration/teaching-v021，保留此前未提交的教学改动。本轮未自动提交或推送。
+显式配置 V0.2.1 的项目使用 `agents/teaching_service.py`。其中 `decide()` 使用 `agents/decide_service.py` 的离线规则，`teach()`、`evaluate()` 和 `evolve()` 使用公共 Mock。普通项目继续进入自然语言教学入口。
 
 ## 本地启动和身份权限
 
@@ -23,15 +23,15 @@ P=`/api/tasks/:id/teaching-v021`。所有写操作需稳定request_id，重复�
 | 路径 | 输入 | 后台行为 |
 |---|---|---|
 | POST /api/teaching-v021/session | task_id；Bearer访问令牌 | 生成该项目范围Cookie，不将令牌入库 |
-| GET P | 已授权 | 读取执行记录、策略分配、请求/响应、上下文与不可变证据来源 |
+| GET P | 已授权 | 读取当前教学决策、执行记录、策略分配、请求和响应，以及冻结的上下文与证据来源 |
 | POST P/configure | request_id | 配置包内演示课程/策略，明确标为仅Mock联调审批 |
-| POST P/decide | request_id | 从真实已保存的Coding检查点、计划、学生消息和版本匹配验证记录生成冻结上下文，再调用decide |
+| POST P/decide | request_id | 从已保存的 Coding 检查点、计划、学生消息和当前版本的验证记录生成冻结请求，再按阶段、先修、掌握状态和证据类型选课 |
 | POST P/teach | request_id；phase可选 | 从已执行动作/真实回答/评价构造历史，从库读取候选/当前策略，通过语义校验才保存动作和分配 |
 | POST P/respond | request_id、message | 保存学生原话，关联最近一个尚未回答的已执行教学动作 |
 | POST P/evaluate | request_id、assessment_mode | 使用已保存学生回答、演示Rubric和任务说明调用evaluate，记录建议但不更新正式掌握 |
 | POST P/evolve | request_id | 使用真实联调动作和评价记录构建outcome；保留Mock来源，只存候选完整策略及单独pending实验 |
 | POST P/allow-switch | request_id、reason；仅Bearer操作者 | 授权下次回合在已登记候选间切换，一次性消费，保留原分配历史 |
-| POST P/resume | request_id、confirmed=true、teaching_completed=true；instruction可选 | 委托原检查点状态机恢复，不传任何Skill解锁；重复/失败重试复用原操作 |
+| POST P/resume | request_id、confirmed=true、teaching_completed=true；instruction可选 | 跳过教学或已执行教学动作后，学生确认可恢复开发。重复和失败重试复用原操作 |
 
 四端口的公共契约请求/响应位于后台requests内；HTTP外层收据携带mode、applied_mastery=false和空skill_unlocks，不能将外层当公共契约。真实请求响应样例见验收产物 http-examples.json。
 
@@ -48,7 +48,7 @@ P=`/api/tasks/:id/teaching-v021`。所有写操作需稳定request_id，重复�
 
 ## 接替服务
 
-可信部署代码可调用 `install_service(factory, mode=..., approved_library=...)` 注入符合公共异步协议的服务。生产mode必须提供审核标记的正式课程/内容策略/教学策略/知识包，检查类型和关联；现有Mock任务不允许直接变成正式任务。没有实现真实教学算法、课程选择算法或演化效果算法。
+可信部署代码可调用 `install_service(factory, mode=..., approved_library=...)` 注入符合公共异步协议的服务。生产mode必须提供审核标记的正式课程、内容策略、教学策略和知识包，服务端检查类型和关联。正式服务使用独立项目。
 
 ## 验证命令与证据含义
 
@@ -67,7 +67,8 @@ P=`/api/tasks/:id/teaching-v021`。所有写操作需稳定request_id，重复�
 4. 同步HTTP在服务调用时持有该任务锁，当前Mock很快；正式服务预算最多120秒，会阻塞同项目后续修改。生产异步队列/多用户鉴权需另行设计。
 5. 本轮记录“执行教学动作”指后台已保存并通过消息API提供展示，不证明学生已阅读；浏览器实际展示另有验收。
 6. 上游不应自报审批标记；install_service是可信部署入口，不能暴露成学生/模型可写API。
-7. 演化实验只登记pending，本轮不实现生产实验观察导入、策略发布、Skill安装或能力自动认证。
+7. 演化实验只登记 `pending`。
+8. 离线规则按证据类型筛选，标题匹配提高排序分数。无关测试记录仍可能匹配碰撞边界课卡 L13。L13 试验目录需要配套知识包和策略才能用于网站教学，默认演示目录使用验收条件和边界情形两张课卡。
 
 ## 同期故障修正
 

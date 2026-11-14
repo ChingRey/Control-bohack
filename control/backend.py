@@ -234,7 +234,7 @@ def start_checkpoint_teaching(t):
     if decision['teach']:
      teaching_v021.command(fresh,'teach',{'request_id':'cp-teach-'+checkpoint['checkpoint_id']},__import__(__name__))
     fresh=load(t['id'])
-    fresh['coding_checkpoints'][-1]['delivery']={'status':'completed','engine_version':'0.2.1','mode':teaching_v021.SERVICE_MODE};save(fresh)
+    fresh['coding_checkpoints'][-1]['delivery']={'status':'completed' if decision['teach'] else 'skipped','engine_version':'0.2.1','mode':teaching_v021.SERVICE_MODE};save(fresh)
    except Exception:
     fresh=load(t['id']);fresh['coding_checkpoints'][-1]['delivery']={'status':'failed','error':'v021_checkpoint_failed; retry via integration console'};save(fresh)
   return

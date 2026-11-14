@@ -1,4 +1,4 @@
-import copy,io,json,os,sys,time,unittest
+import copy,io,json,os,time,unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 import backend as b
@@ -29,7 +29,15 @@ class V021IntegrationTests(unittest.TestCase):
  def command(self,op,rid,**kw):
   code,receipt=self.call(op,{'request_id':rid,**kw});self.assertEqual(code,200,receipt);return receipt['response']
  def begin(self):
-  self.command('configure','config');self.command('decide','decision');return self.command('teach','turn0')
+  self.command('configure','config')
+  decision=self.command('decide','decision')
+  self.assertEqual(decision['decision_id'],'decide-decision')
+  self.assertEqual(decision['knowledge_point_ids'],['acceptance-criteria'])
+  view=self.call('')[1]
+  self.assertEqual(view['decision'],decision)
+  frozen=view['contexts'][decision['context_id']]
+  self.assertEqual(frozen['sources'][decision['evidence_refs'][0]]['plan'],b.load(self.h.task['id'])['plan'])
+  return self.command('teach','turn0')
  def test_all_four_history_and_authorized_strategy_switch(self):
   initial=self.begin();self.assertEqual(initial['strategy_selection_mode'],'initial')
   self.command('respond','reply0',message='我会检查商品列表是否显示并验证空列表边界。')
@@ -91,7 +99,7 @@ class V021IntegrationTests(unittest.TestCase):
   for line in (root/'SHA256SUMS.txt').read_text(encoding='utf-8').splitlines():
    digest,name=line.split(None,1);name=name.strip()
    path=root/name
-   if path.exists():self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(),digest,name)
+   self.assertEqual(hashlib.sha256(path.read_bytes().replace(b'\r\n',b'\n')).hexdigest(),digest,name)
 
  def test_failed_coding_resume_can_retry_without_advancing_twice(self):
   self.begin()
@@ -134,5 +142,39 @@ class V021IntegrationTests(unittest.TestCase):
    else:self.fail('automatic V0.2.1 checkpoint not delivered')
   self.assertEqual(current['coding_checkpoints'][-1]['delivery']['status'],'completed')
   self.assertEqual(current['coding_checkpoints'][-1]['schema_version'],1)
+
+ def test_skip_runs_no_teaching_and_allows_confirmed_resume(self):
+  self.command('configure','config')
+  task=b.load(self.h.task['id'])
+  task['workflow']['stage']=2
+  task['checkpoint_delivery']='automatic'
+  b.save(task)
+  b.start_checkpoint_teaching(task)
+  view=self.call('')[1]
+  self.assertFalse(view['decision']['teach'])
+  self.assertEqual(view['turns'],[])
+  self.assertEqual(b.load(task['id'])['coding_checkpoints'][-1]['delivery']['status'],'skipped')
+  self.assertEqual(self.call('teach',{'request_id':'skip-teach'})[0],400)
+  self.assertEqual(self.call('resume',{'request_id':'no-confirm','confirmed':False,'teaching_completed':True})[0],400)
+
+  body={'request_id':'skip-resume','confirmed':True,'teaching_completed':True}
+  with patch.object(executor,'execute',side_effect=self.h.execute) as transport:
+   self.assertEqual(self.call('resume',body)[0],202)
+   self.h.wait()
+   self.assertEqual(self.call('resume',body)[0],200)
+   transport.assert_called_once()
+  self.assertEqual(b.load(task['id'])['step'],1)
+
+ def test_legacy_demo_library_can_teach_newly_selected_edge_cases(self):
+  self.command('configure','config')
+  task=b.load(self.h.task['id'])
+  library=task['teaching_v021']['library']
+  library['knowledge_packages']=[p for p in library['knowledge_packages'] if p['knowledge_point_id']=='acceptance-criteria']
+  task['plan'][0]='检查边界情形'
+  b.save(task)
+  decision=self.command('decide','edge-cases')
+  self.assertEqual(decision['knowledge_point_ids'],['edge-cases'])
+  turn=self.command('teach','teach-edge-cases')
+  self.assertEqual(turn['action']['knowledge_point_ids'],['edge-cases'])
 
 if __name__=='__main__':unittest.main()
