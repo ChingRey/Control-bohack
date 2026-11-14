@@ -59,6 +59,7 @@ def record(task, checkpoint_id, instruction, agent_output, before, after, stage_
         root_event=next(e for e in events if e['checkpoint_id']==root_id)
         if not root_event.get('resume_request_id'):
             event['root_checkpoint_id']=root_id;event['previous_checkpoint_id']=parent['checkpoint_id']
+    event['material_revision']=task.get('workflow',{}).get('revision',0)
     events.append(event)
     return event
 

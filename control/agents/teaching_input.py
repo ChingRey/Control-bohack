@@ -57,15 +57,16 @@ def build(task, action):
             'binary_changes': evidence.get('binary_changes', [])[:10],
             'notice': '执行记录和浏览器观察未经独立验证；源代码是快照，省略部分可按行读取。'}
     history = task['messages']
-    focus = next((i for i in range(len(history)-1, -1, -1) if history[i]['role'] == 'user' and
+    eligible = [i for i,m in enumerate(history) if m.get('queue_status') not in ('queued','needs_retry')]
+    focus = next((i for i in range(len(history)-1, -1, -1) if i in eligible and history[i]['role'] == 'user' and
                   history[i]['channel'] == ('teaching' if action == 'message' else 'coding')), None)
     # Keep a small tail and the current question verbatim; drop transport/UI metadata.
-    ids = set(range(max(0, len(history)-4), len(history)))
+    ids = set(eligible[-4:])
     if review:
-        ids = set([i for i,m in enumerate(history) if m['channel']=='coding'][-3:])
-        prior = next((i for i in range(len(history)-1,-1,-1) if history[i]['channel']=='teaching' and history[i]['role']=='assistant'),None)
+        ids = set([i for i,m in enumerate(history) if i in eligible and m['channel']=='coding'][-3:])
+        prior = next((i for i in range(len(history)-1,-1,-1) if i in eligible and history[i]['channel']=='teaching' and history[i]['role']=='assistant'),None)
         if prior is not None:ids.add(prior)
-    initial = next((i for i,m in enumerate(history) if m['channel']=='coding' and m['role']=='user'), None)
+    initial = next((i for i,m in enumerate(history) if i in eligible and m['channel']=='coding' and m['role']=='user'), None)
     if initial is not None:
         ids.add(initial)
     if focus is not None:

@@ -7,10 +7,10 @@ function hasCodeChanges(){return !!(task&&file&&Object.prototype.hasOwnProperty.
 function lines(){$('lines').textContent=$('code').value.split('\n').map((_,i)=>i+1).join('\n')}
 function openFile(name){clearRowHighlight();if(hasCodeChanges()&&!confirm('当前文件尚未保存，放弃修改并切换？'))return;file=name;saved=task.files[file];$('code').value=saved;$('filename').textContent=file;lines();renderFiles()}
 function renderFiles(){$('files').replaceChildren();Object.keys(task.files).forEach(name=>{const b=document.createElement('button');b.className=name===file?'active':'';const icon=document.createElement('em');icon.textContent=name.endsWith('.js')?'JS':name.endsWith('.css')?'#':'<>';b.append(icon,document.createTextNode(name));b.onclick=()=>openFile(name);$('files').append(b)})}
-function render(){$('task-title').textContent=task.title||'新项目';$('project').textContent=task.title||'新项目';renderCodingWorkflow();if(!(file in task.files))file=Object.keys(task.files)[0]||'';renderFiles();saved=task.files[file]||'';$('code').value=saved;lines();$('filename').textContent=file||'空项目';$('code').disabled=!file;$('code').placeholder=file?'':'尚无文件，请在Coding聊天中描述你想开发的项目';$('save').disabled=!file;renderDevelopmentPlan();$('changes').textContent=task.changes.length?'已保存 '+task.changes.length+' 次代码修改':'尚无代码修改';renderChats();$('checks').textContent=task.checks.map(c=>(c.pass?'✓ ':'○ ')+c.name).join('\n');$('run').disabled=busy||!task.plan.length||task.step>=task.plan.length;renderTeacherStatus();if(previewTaskId&&previewTaskId!==task.id){runtimeObservations=[];previewTaskId=null;$('runtime-frame').src='about:blank';if(!$('runtime-panel').hidden)loadPreview()}$('connection').textContent='本地后端已连接 · SQLite 已保存';localStorage.setItem('control-workbench-task',task.id)}
-function setBusy(value){busy=value;document.querySelectorAll('form button,#run,#save,#review-teaching,#evaluate-teaching,#verify,#plan-confirm,#restart-example,#knowledge-topics button,.plan-choice').forEach(b=>b.disabled=value);if(!value&&task){$('run').disabled=!task.plan.length||task.step>=task.plan.length;$('save').disabled=!file}}
+function render(){const dirty=hasCodeChanges()&&task.files[file]!==$('code').value,draft=dirty?$('code').value:null,oldFile=file,oldSaved=saved;$('task-title').textContent=task.title||'新项目';$('project').textContent=task.title||'新项目';renderCodingWorkflow();if(!(file in task.files))file=Object.keys(task.files)[0]||'';renderFiles();saved=task.files[file]||'';$('code').value=saved;lines();$('filename').textContent=file||'空项目';$('code').disabled=!file;$('code').placeholder=file?'':'尚无文件，请在Coding聊天中描述你想开发的项目';$('save').disabled=!file;renderDevelopmentPlan();$('changes').textContent=task.changes.length?'已保存 '+task.changes.length+' 次代码修改':'尚无代码修改';renderChats();$('checks').textContent=task.checks.map(c=>(c.pass?'✓ ':'○ ')+c.name).join('\n');$('run').disabled=busy||!task.plan.length||task.step>=task.plan.length;renderTeacherStatus();if(previewTaskId&&previewTaskId!==task.id){runtimeObservations=[];previewTaskId=null;$('runtime-frame').src='about:blank';if(!$('runtime-panel').hidden)loadPreview()}$('connection').textContent='本地后端已连接 · SQLite 已保存';localStorage.setItem('control-workbench-task',task.id);if(dirty&&file===oldFile){$('code').value=draft;saved=oldSaved;lines()}if(window.renderWorkflow)window.renderWorkflow()}
+function setBusy(value){busy=value;document.querySelectorAll('#run,#save,#review-teaching,#evaluate-teaching,#verify,#plan-confirm,#restart-example,#knowledge-topics button,.plan-choice').forEach(b=>b.disabled=value);if(!value&&task){$('run').disabled=!task.plan.length||task.step>=task.plan.length;$('save').disabled=!file}}
 async function waitForTeacher(){
- while(['queued','running'].includes(task.teaching_run?.status)||['queued','running'].includes(task.coding_run?.status)){
+ while(['coding_run','teaching_run','organizer_run','verification_run'].some(k=>['queued','running'].includes(task[k]?.status))){
   await new Promise(r=>setTimeout(r,900));
   task=await api('/tasks/'+task.id);render();
  }
@@ -31,11 +31,13 @@ async function codingChat(message){
  if(task.mode==='opencode')return api('/tasks/'+task.id+'/coding/messages',{message});
  return api('/tasks/'+task.id+'/'+(!task.plan.length?'plan':'coding/messages'),{message});
 }
+let chatPolling=false;
+async function pollChat(){if(chatPolling)return;chatPolling=true;try{while(task&&(busy||['coding_run','teaching_run','organizer_run','verification_run'].some(k=>['queued','running'].includes(task[k]?.status))||task.messages.some(m=>m.queue_status==='queued'))){await new Promise(r=>setTimeout(r,900));task=await api('/tasks/'+task.id);render()}}catch(e){toast(e.message)}finally{chatPolling=false}}
 for(const ch of ['coding','teaching'])$(ch+'-form').onsubmit=async e=>{
- e.preventDefault();if(busy)return;const input=$(ch+'-input'),message=input.value.trim();if(!message)return;
- if(hasCodeChanges())return toast('请先保存代码修改');input.value='';
- const ok=await perform(()=>ch==='coding'?codingChat(message):api('/tasks/'+task.id+'/teaching/messages',{message}),{channel:ch,message});
- if(!ok&&!input.value)input.value=message;
+ e.preventDefault();const input=$(ch+'-input'),message=input.value.trim();if(!message||!task)return;
+ const request_id=input.dataset.requestId||crypto.randomUUID();input.dataset.requestId=request_id;
+ try{task=await api('/tasks/'+task.id+'/chat/send',{channel:ch,message,request_id});input.value='';delete input.dataset.requestId;render();pollChat()}
+ catch(e){toast(e.message)}
 };
 $('code').oninput=()=>{clearRowHighlight();lines()};$('code').onscroll=()=>{$('lines').scrollTop=$('code').scrollTop;paintRowHighlight()};
 $('save').onclick=async()=>{if(busy||!file||!(file in (task?.files||{})))return;busy=true;try{task=await api('/tasks/'+task.id+'/files',{path:file,content:$('code').value});render();toast('代码已保存')}catch(e){toast(e.message)}finally{busy=false}};
@@ -55,9 +57,9 @@ function renderTeacherStatus(){
  const questions=plan.open_questions||[];addReview('待验证',questions.length?questions.join('；'):'尚无额外待验证项','pending');
  const evidence=document.createElement('details');evidence.className='review-evidence';const summary=document.createElement('summary');summary.textContent='查看审查依据';const body=document.createElement('div');const warnings=last?.result?.validation_warnings||[];body.textContent=(plan.reason?'依据：'+plan.reason+'\n':'')+'掌握状态：'+(task.teaching?.assessment||'未检查')+'（候选掌握仍待复核）\n'+(warnings.length?'校验提醒：'+warnings.join('；'):'当前没有引用校验提醒')+'\n本轮仅使用只读材料，不代表已执行测试。';evidence.append(summary,body);review.append(evidence);
  const settings=$('settings');
- settings.textContent=real?'已连接 · '+(task.teaching_provider?.model||'模型'):'连接模型';
+ settings.textContent=real?'已配置 · '+(task.teaching_provider?.model||'模型'):'连接模型';
  settings.classList.toggle('connected',real);
- settings.title=real?'Teaching Agent 已连接；点击可更换模型或配置':'连接 Teaching Agent 使用的模型';
+ settings.title=real?'Teaching配置已保存；实际可用性以模型调用为准':'连接 Teaching Agent 使用的模型';
   document.querySelector('footer > span:last-child').textContent='真实文件与记录 · Coding OpenCode · 学习记录保存在本地';
  const phases={observe:'观察现象',explain:'解释原因',propose:'提出改法',verify:'设计验证',transfer:'迁移检查'};
  const phase=phases[task.teaching?.phase]||'观察现象';
@@ -198,6 +200,7 @@ function renderDevelopmentPlan(){
 $('plan-confirm').onclick=()=>{confirmMode='plan';$('confirm').querySelector('p').textContent='先与教师讨论整体目标和拆分。确认后只保存计划，不执行代码。';$('confirm-run').textContent='确认计划';$('confirm').querySelector('h2').textContent='编辑并确认开发计划（每行一步）';$('instruction').value=(task.plan_draft||[]).join('\n');$('confirm').showModal()};
 $('restart-example').onclick=()=>{if(confirm('新建空白项目？当前记录会保留。'))perform(()=>api('/tasks',{coding_mode:'opencode'}))};
 function renderKnowledge(){
+ if(task.mode==='opencode'&&task.teaching_library&&typeof renderTeachingLibrary==='function'){renderTeachingLibrary();return}
  const course=task.teaching?.course||{},prefs=course.knowledge_preferences||{};const el=$('knowledge-topics');el.replaceChildren();
  const topics=task.knowledge_topics||{};
  Object.entries(topics).forEach(([id,topic])=>{const row=document.createElement('div');row.className='knowledge-topic';const label=document.createElement('span');label.textContent=topic.title+(prefs[id]==='later'?' · 稍后再学':prefs[id]==='learn'?' · 已选择':'');row.append(label);for(const [choice,title] of [['learn','学一下'],['later','稍后']]){const b=document.createElement('button');b.textContent=title;b.disabled=busy;b.onclick=()=>perform(()=>api('/tasks/'+task.id+'/teaching/knowledge',{topic:id,choice}));row.append(b)}el.append(row)});

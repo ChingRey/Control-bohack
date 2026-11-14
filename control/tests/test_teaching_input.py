@@ -1,6 +1,8 @@
 import copy
 import json
 import unittest
+import os
+from unittest.mock import patch
 from agents import teaching, teaching_input as ti, checkpoints
 
 
@@ -88,3 +90,24 @@ class CompactTeachingInputTests(unittest.TestCase):
         self.assertTrue(all(x['deleted'] for x in ctx['checkpoint_event']['project_evidence']['changes']))
         self.assertEqual(task['messages'],original)
         self.assertEqual(len(task['coding_checkpoints']),2)
+
+    def test_queued_messages_do_not_leak_into_compact_input(self):
+        task=self.task()
+        task['messages'].append({'channel':'teaching','role':'user','content':'future-secret-topic','queue_status':'queued'})
+        ctx=teaching.context(task,'message')
+        self.assertNotIn('future-secret-topic',json.dumps(ctx))
+        self.assertNotIn(3,ctx['context_usage']['loaded_message_ids'])
+
+    def test_library_methods_and_continuity_share_one_model_request(self):
+        task=self.task();seen=[]
+        def request(config,messages,*args,**kwargs):
+            seen.append(json.loads(messages[1]['content']));return object()
+        reply='请检查计分。<continuity_memory>'+json.dumps({'notes':[{'kind':'next_step','text':'询问学生怎样验证计分','evidence_ids':[1]}]})+'</continuity_memory>'
+        with patch.dict(os.environ,{'TEACHING_MODE':'model','TEACHING_PROVIDER':'siliconflow','SILICONFLOW_API_KEY':'fixture'}),patch.object(teaching.providers,'request',side_effect=request),patch.object(teaching,'request_model',return_value={'choices':[{'message':{'content':reply}}]}):
+            self.assertEqual(teaching.run(task,'checkpoint'),'请检查计分。')
+        self.assertEqual(len(seen),1)
+        self.assertTrue(seen[0]['teaching_library']['lessons'])
+        self.assertTrue(seen[0]['stage_methods'])
+        self.assertIn('src/game.js',seen[0]['files'])
+        self.assertEqual(task['teaching']['continuity']['revision'],1)
+        self.assertTrue(task['teaching']['turns'][-1]['teaching_library']['submitted_to_model'])

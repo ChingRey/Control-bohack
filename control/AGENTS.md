@@ -1,3 +1,15 @@
+# 硅基流动接口接续（2026-11-14）
+
+先读docs/SILICONFLOW_API.md。Teaching新增SiliconFlow，与DeepSeek/OpenAI分开取密钥并固定官方URL；Coding原适配保留，UI默认模型沿用用户交接包。167项回归、真实浏览器配置/教学资料/工作流验收和本地模拟服务的真实CLI写文件复测通过；本轮未调用真实账户。不得用交接包旧文件覆盖教学资料、脱敏、只读权限和900秒执行。phase_contract等非API改动未融合。
+
+# 教学资料接入补充（2026-11-14）
+
+先读docs/TEACHING_LIBRARY.md。真实Teaching已接离线筛选课卡，最多两张，不把加载当掌握；source与lesson版本在turn保存。Teaching仍两个只读工具，Coding文件权限与900秒不变。更新catalog.json须重算hash并推进版本，不从学生路径或URL加载可执行内容；外部文献不能替代原话证据。
+
+# 工作流接续优先说明（2026-11-14）
+
+先读docs/WORKFLOW_IMPLEMENTATION.md和新版docs/API.md。当前147项测试及真实隔离浏览器UI验收通过；真实模型质量另验。Teaching仍源码只读，材料整理为独立后台任务和待审核建议；Coding文件自主能力及900秒不变。新前端用chat/send先保存再排队，不能让队列改变正在执行的上下文。workflow维护三份共享材料、私有观察、功能循环、审核规则和个人经验；规则最多15条，代码恢复保留聊天，交付包不代表公网已部署。旧接口保留兼容，旧Mock不充作真实整理。以下旧说明有冲突时以本段、新文档和源码为准。
+
 # 当前融合版优先说明（2026-11-14）
 
 先读 docs/FRAMEWORK_INTEGRATION.md 和 docs/POST_TEACHING_KNOWLEDGE.md。真实项目 Teacher 为 project_chat，只读自然交流；旧课程/评分仅用于显式sample。Coding先出计划，批准以 coding/plan-decision 的结构化选择为准，不从自然聊天自动批准计划。evolve仅接口和Mock，不实现策略优化；课后整理Mock不得进入真实知识检索；Coding Skill加载关闭。127项测试已通过。以下旧说明与本段冲突时以本段和当前源码为准。
@@ -125,3 +137,6 @@ manual delivery可完全不调用Teaching Agent。Skill通知为教学端报告�
 明确项目文件命令支持直接执行和后续返工；普通讨论仍只读。OpenCode配置只显式允许项目文件工具，Shell和外部网络仍被拒绝；不得把本次文件修复描述为已开放全部执行权限。文件写入失败尝试回滚，本地data不清理。verify_opencode_write.py使用真实CLI及本机模拟服务，不是实际模型质量验收。
 
 通用项目文件接续：已移除扩展名/文件名白名单，任意项目内文件路径均可创建写入；文本与二进制分别保存和传输，binary_files快照只含元数据。明确开发授权在未确认计划时也进入可写执行，不将“执行/继续”静默降为只读。执行超时保持900秒；health.coding公开file_access=project_all_types、permission_revision=2和execution_timeout_seconds以核对运行版本。Shell和外部联网权限未改变。
+
+## 工作流基础（本轮）
+Teaching保持只读。workflow共享三份材料、教师记录独立；版本API和恢复包括二进制，恢复前保护当前代码，聊天学习不回退。Coding文件权限及900秒保持不变。见docs/WORKFLOW_IMPLEMENTATION.md。

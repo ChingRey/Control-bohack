@@ -19,6 +19,20 @@ class ProjectFileExecutionTests(unittest.TestCase):
         content='console.log("revised");' if 'src/main.js' in files else 'console.log("ready");'
         return {'text':'已保存 src/main.js','files':{**files,'src/main.js':content},'events':[]}
 
+    def test_new_queued_chat_keeps_plan_before_execution(self):
+        task=b.load(self.h.task['id']);task['plan']=[];task['plan_draft']=[];b.save(task)
+        def plan(files,packet,planning=False,chatting=False):
+            self.assertTrue(planning);self.assertFalse(chatting)
+            return {'text':'开发计划：\n1. 创建游戏页面\n2. 添加交互','files':files,'events':[]}
+        with patch.object(executor,'execute',side_effect=plan) as transport:
+            self.h.call(self.h.path+'/chat/send',{'channel':'coding','message':'我们做一个小游戏','request_id':'queued-plan'})
+            task=self.h.wait()
+            self.assertEqual(task['plan'],[]);self.assertEqual(len(task['plan_draft']),2)
+            self.h.call(self.h.path+'/chat/send',{'channel':'coding','message':'开始开发','request_id':'queued-unapproved'})
+            task=self.h.wait()
+            self.assertEqual(transport.call_count,1)
+            self.assertEqual(task['plan'],[])
+
     def test_create_js_request_and_followup_revision_are_writable(self):
         with patch.object(executor,'execute',side_effect=self.run_coding):
             self.assertEqual(self.h.call(self.h.path+'/coding/messages',{'message':'按计划创建 src/main.js 并写入代码'})[0],202)

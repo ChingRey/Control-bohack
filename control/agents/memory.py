@@ -20,13 +20,13 @@ def state(task):
 def select_messages(task, evidence_ids=()):
     messages=task['messages'];focus={}
     for channel,key in (('coding','coding_prompt_id'),(None,'student_message_id')):
-        focus[key]=next((i for i in range(len(messages)-1,-1,-1) if messages[i]['role']=='user' and (channel is None or messages[i]['channel']==channel)),None)
+        focus[key]=next((i for i in range(len(messages)-1,-1,-1) if messages[i].get('queue_status') not in ('queued','needs_retry') and messages[i]['role']=='user' and (channel is None or messages[i]['channel']==channel)),None)
     selected={i for i in focus.values() if i is not None}
     remaining=HISTORY_CHARS
     # Retain a few original learning witnesses before filling the recent window.
     preferred=list(dict.fromkeys([*range(max(0,len(messages)-12),len(messages)),*evidence_ids]))
     for i in reversed(preferred):
-        if type(i) is not int or not 0<=i<len(messages) or i in selected:continue
+        if type(i) is not int or not 0<=i<len(messages) or i in selected or messages[i].get('queue_status') in ('queued','needs_retry'):continue
         cost=size(messages[i])
         if cost<=remaining:selected.add(i);remaining-=cost
     rows=[{'id':i,**messages[i]} for i in sorted(selected)]
@@ -35,6 +35,7 @@ def select_messages(task, evidence_ids=()):
 def prepare(task,summarize,progress):
     """At most two bounded batches; successful batches survive later response failure."""
     s=state(task);stop=max(0,len(task['messages'])-12)
+    stop=min(stop,next((i for i,m in enumerate(task['messages']) if m.get('queue_status') in ('queued','needs_retry')),stop))
     for _ in range(2):
         start=s['covered_through']+1
         if start>=stop:return

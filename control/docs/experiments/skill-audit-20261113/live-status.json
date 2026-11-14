@@ -1,0 +1,237 @@
+{
+  "valid_comparative_samples": 0,
+  "planned_runs": 24,
+  "qwen_service_attempts": [
+    {
+      "task_id": "9aa40a4d-ece6-44ae-b582-22d9777552d1",
+      "run": {
+        "id": "d7aa4e92-1a52-4833-95a2-77b2e886980a",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581330.8780427
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "5eb63a53-887a-4881-8542-1f10482a2cee",
+      "run": {
+        "id": "5e341630-7bf6-436d-bd29-b72fa6f6c4dc",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581331.0769203
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "3ea8be5c-3252-4a55-9022-d749253fa1cb",
+      "run": {
+        "id": "9d368507-bfbe-42d1-ba6b-99a3e51999c8",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581325.7954938
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "15bd487d-86d2-4791-9ec9-56cbc3160c2f",
+      "run": {
+        "id": "7ea16034-91d6-44a9-8247-a1d884353063",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581325.6639419
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "59d375fa-ec9d-4e06-acf3-66f34f994b37",
+      "run": {
+        "id": "798f0295-9e8f-4692-8463-5f7293083962",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581320.4621105
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "1ac621e9-4c0a-431b-bfab-11f2b6da5855",
+      "run": {
+        "id": "09bfd3e0-ea58-4fd4-a0e2-6e49abdc14b4",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581320.4958534
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "8bdf21f8-3a37-4359-acda-37aae88ee900",
+      "run": {
+        "id": "4460066a-9615-4804-8145-6b79ce16d013",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581315.328119
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "c9b8fb1b-de90-424e-9325-010a56ff6021",
+      "run": {
+        "id": "fe5a8897-a58a-4b30-86b0-412445c0dc44",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581315.2290385
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "693269a4-3a31-44d6-9078-ef12702efe99",
+      "run": {
+        "id": "d1aa217f-70f3-48fe-a114-8f0e76ec36bf",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581310.1340022
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "fda7c78d-caf8-4091-98c1-ff00768e6907",
+      "run": {
+        "id": "9dcc612e-1693-4cbc-aa8e-f932e77e9ab1",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581310.043831
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "196a9011-f1e7-49c4-9735-75dfde124d73",
+      "run": {
+        "id": "cb243087-0d64-4b6e-9a48-389cfb07bba4",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581304.7797053
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "a7db3e27-90ae-4676-b22a-489b577e7e81",
+      "run": {
+        "id": "6c4f2074-d007-4d41-9fa5-5c29957eb0e9",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581304.9292936
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "e4fdc740-46c9-4146-89fe-b3a278094ad2",
+      "run": {
+        "id": "deab966d-3471-443f-87ef-7b37bd56a0ff",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581299.6775987
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "10a81737-8a1f-433b-9508-5c28f5ca0cdc",
+      "run": {
+        "id": "641c33e0-33ca-4192-bd1a-59734777d6ef",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581299.5944693
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "7e12345a-746e-4c4b-8e6c-0d6cbd619ba7",
+      "run": {
+        "id": "b9dfe698-5527-4da0-9675-455fdd63b07a",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581294.424223
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "2ea1a6da-a50d-4db5-bad4-d78cc2c4f7c0",
+      "run": {
+        "id": "3440b6bf-4ac4-4b64-9342-56b75818150c",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581294.3107436
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "7bc03dd9-f4e6-4e91-8e35-1e15e25a9630",
+      "run": {
+        "id": "1f57d124-35f7-4fa4-9a65-f5788d253e98",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581289.0992498
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "2f7a5fa3-f980-4fe6-9adf-311a38aac442",
+      "run": {
+        "id": "8d220951-b7cf-4948-b4dc-cd307f39c932",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581289.0281348
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "f5770e47-c98e-4714-a1e5-d9ef76baf0ae",
+      "run": {
+        "id": "e05279e8-e4dd-4dc8-97f8-23cf805d9005",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581283.7790039
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "beb46262-a300-4c18-adf2-402e9a09258f",
+      "run": {
+        "id": "38630683-1d46-414b-ac63-8478ff669f0e",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581283.8088245
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "cf22d657-8a66-48f1-9c54-453a5c2a0b89",
+      "run": {
+        "id": "e9093f37-904c-4bbd-b8b3-3db97522a812",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581278.4582183
+      },
+      "included_in_effectiveness": false
+    },
+    {
+      "task_id": "60accab4-fe73-4bde-9065-c57790f49373",
+      "run": {
+        "id": "ea4df1f0-7572-4f0d-b323-15a76a050e12",
+        "status": "failed",
+        "detail": "OpenCode调用失败（改动未提交）：Access denied, please make sure your account is in good standing. For details, see: https://help.aliyun.com/zh/model-studio/error-code#overdue-payment",
+        "started_at": 1794581278.4763305
+      },
+      "included_in_effectiveness": false
+    }
+  ],
+  "siliconflow_auth_probe": {
+    "model": "Qwen/Qwen2.5-7B-Instruct",
+    "status": 401,
+    "code": 30014,
+    "message": "Token is invalid.",
+    "key_persisted": false
+  },
+  "reason": "Qwen service access denied; SiliconFlow Chinese endpoint returned HTTP401/code30014/Token is invalid. Failed calls and unchanged seed code are not effectiveness samples.",
+  "no_sample_fallback": true,
+  "keys_persisted": false,
+  "workbench_model_configuration_changed": false
+}

@@ -1,0 +1,44 @@
+{
+  "date": "2026-11-14",
+  "source_archive": "Control-双模型API交接版-20261114.zip",
+  "source_archive_sha256": "b45197b906c0452ee47efd4b7384da7e1460b7ffaf501c0b325c73cc48cf5f93",
+  "imported_api_changes": [
+    "Teaching SiliconFlow fixed China endpoint and independent key",
+    "Teaching GLM-5.3 form default",
+    "Coding Qwen3-Coder-30B-A3B-Instruct form default",
+    "Saved provider restoration and provider-switch key clearing"
+  ],
+  "preserved": [
+    "Teaching source-read-only tools",
+    "31-source 21-lesson library",
+    "source redaction",
+    "Coding arbitrary project file types",
+    "900-second coding timeout",
+    "existing workflow, queue, versions and checks"
+  ],
+  "not_imported": [
+    "phase_contract-dependent stage execution changes unrelated to API"
+  ],
+  "archive_claimed_live_models": {
+    "coding": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+    "teaching": "zai-org/GLM-5.3"
+  },
+  "live_model_call_in_this_merge": false,
+  "notice": "源包记录的真实调用属于源包提供者的验证，不当作本轮账户或模型效果验证。",
+  "regression_tests": {
+    "count": 167,
+    "result": "passed",
+    "real_browser_cases_enabled": true
+  },
+  "real_browser_configuration": {
+    "result": "passed",
+    "keys_entered_for_live_call": false
+  },
+  "native_opencode_file_smoke": {
+    "result": "passed",
+    "file": "src/main.js",
+    "binary_preserved": true,
+    "provider": "local_synthetic",
+    "real_model_called": false
+  }
+}

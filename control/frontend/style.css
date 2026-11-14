@@ -102,3 +102,13 @@ body.resizing textarea{pointer-events:none}
 .plan-choices .revise{background:transparent;border:1px solid #526171;color:#b5c0cd}
 .plan-choices .plan-choice:disabled{opacity:.45;cursor:default}
 .plan-choice-note{font-size:.9em;color:#93a4b6;margin-top:12px}
+
+#workflow-dialog,#versions-dialog,#diff-dialog{width:min(850px,90vw);max-height:85vh;overflow:auto}#workflow-dialog textarea{display:block;width:100%;box-sizing:border-box;margin:12px 0}#project-diff-content{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px}
+
+#behavior-dialog textarea{display:block;width:100%;min-height:60px}#behavior-history{white-space:pre-wrap}
+
+#flow-review-dialog,#flow-student-dialog,#flow-delivery-dialog{width:min(900px,92vw);max-height:88vh;overflow:auto}#flow-review-dialog section{border:1px solid #42566a;padding:14px;margin:12px 0}#flow-review-dialog textarea,#flow-delivery-dialog textarea{display:block;width:100%;box-sizing:border-box;min-height:90px;margin:8px 0}.flow-card{padding:12px;color:#bed4e8}.flow-browser-step{display:flex;gap:6px;margin:8px 0}.flow-browser-step input{min-width:80px;flex:1}#flow-safety,#flow-verification{white-space:pre-wrap;overflow-wrap:anywhere;max-height:320px;overflow:auto}#flow-promote-rules label{display:block}#flow-status{font-size:12px;color:#a9cce8}
+
+.flow-navigation{display:grid;gap:5px;padding:10px;border-bottom:1px solid #344252;flex-shrink:0}.flow-navigation button{text-align:left;padding:8px 10px;font-size:12px}.sidebar-collapsed .flow-navigation{display:none}
+
+#knowledge-topics select{width:100%;font-size:11px;margin:8px 0}#knowledge-topics .library-note{font-size:11px;line-height:1.5;color:#aebdcd}#teaching-references{margin:0 14px 10px;font-size:11px;color:#b9cce0}#teaching-reference-list{max-height:220px;overflow:auto;overflow-wrap:anywhere}#teaching-reference-list a{color:#a8d0f2}

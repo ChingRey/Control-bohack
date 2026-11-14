@@ -1,0 +1,524 @@
+{
+  "runtime": "OpenCode 1.18.34",
+  "provider": "local_synthetic",
+  "production_configuration_changed": false,
+  "skill_scripts_executed": false,
+  "candidate_count": 65,
+  "standard_or_resolved_entries": 64,
+  "loaded": 64,
+  "rows": [
+    {
+      "id": "S01",
+      "name": "socratic-tutor",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S02",
+      "name": "learn-codebase",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S03",
+      "name": "teach",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S04",
+      "name": "tutor",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S05",
+      "name": "assignment",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S06",
+      "name": "generating-technical-quiz",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S07",
+      "name": "leetcode-debrief",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S08",
+      "name": "zettelkasten-socratic-tutor",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S10",
+      "name": "brainstorming",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S11",
+      "name": "writing-plans",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S12",
+      "name": "grill-me",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S13",
+      "name": "grill-with-docs",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S14",
+      "name": "to-spec",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S15",
+      "name": "to-tickets",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S16",
+      "name": "requirements-clarity",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S17",
+      "name": "gepetto",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S18",
+      "name": "feature-forge",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S19",
+      "name": "the-fool",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S20",
+      "name": "product-manager-toolkit",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S21",
+      "name": "doc-coauthoring",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S22",
+      "name": "mermaid-diagrams",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S23",
+      "name": "c4-architecture",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S24",
+      "name": "draw-io",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S25",
+      "name": "excalidraw",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S26",
+      "name": "database-schema-designer",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S27",
+      "name": "frontend-to-backend-requirements",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S28",
+      "name": "backend-to-frontend-handoff-docs",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S29",
+      "name": "architecture-designer",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S30",
+      "name": "api-designer",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S31",
+      "name": "improve-codebase-architecture",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S32",
+      "name": "systematic-debugging",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S33",
+      "name": "verification-before-completion",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S34",
+      "name": "test-driven-development",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S35",
+      "name": "requesting-code-review",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S36",
+      "name": "receiving-code-review",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S37",
+      "name": "diagnosing-bugs",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S38",
+      "name": "qa-test-planner",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S39",
+      "name": "webapp-testing",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S40",
+      "name": "test-master",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S41",
+      "name": "code-reviewer",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S42",
+      "name": "audit-context-building",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S43",
+      "name": "differential-review",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S44",
+      "name": "requirement-elicitation",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S45",
+      "name": "context-aware-questions",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S46",
+      "name": "idea-to-design",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S47",
+      "name": "writing-product-specs",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S48",
+      "name": "writing-user-stories",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S49",
+      "name": "project-planning",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S50",
+      "name": "issue-decomposition",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S51",
+      "name": "dependency-mapping",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S52",
+      "name": "timeline-planning",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S53",
+      "name": "architecture-diagramming",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S54",
+      "name": "writing-verification-plans",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S55",
+      "name": "project-analysis",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S56",
+      "name": "frontend-design",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S57",
+      "name": "web-artifacts-builder",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S58",
+      "name": "vercel-react-best-practices",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S59",
+      "name": "vercel-composition-patterns",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S60",
+      "name": "web-design-guidelines",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S61",
+      "name": "planning-with-files",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S62",
+      "name": "lesson-learned",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S63",
+      "name": "session-handoff",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S64",
+      "name": "ship-learn-next",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    },
+    {
+      "id": "S65",
+      "name": "skill-judge",
+      "status": "completed",
+      "error": null,
+      "contains_method_text": true,
+      "advertised": false
+    }
+  ],
+  "raw_evidence": "C:\\Users\\momo\\Desktop\\Control-bohack-workflow-fetch\\control\\data\\skill-lab\\20261113\\native-loading.json"
+}
