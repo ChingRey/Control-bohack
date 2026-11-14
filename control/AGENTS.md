@@ -1,3 +1,7 @@
+# 当前融合版优先说明（2026-11-14）
+
+先读 docs/FRAMEWORK_INTEGRATION.md 和 docs/POST_TEACHING_KNOWLEDGE.md。真实项目 Teacher 为 project_chat，只读自然交流；旧课程/评分仅用于显式sample。Coding先出计划，批准以 coding/plan-decision 的结构化选择为准，不从自然聊天自动批准计划。evolve仅接口和Mock，不实现策略优化；课后整理Mock不得进入真实知识检索；Coding Skill加载关闭。127项测试已通过。以下旧说明与本段冲突时以本段和当前源码为准。
+
 # 接手开发说明
 
 ## 先确认当前做到哪一步
@@ -112,3 +116,12 @@ OpenAI使用store=false；函数调用和reasoning响应项在同轮后续请求
 OPENAI_API_KEY与TEACHING_MODEL可通过环境配置，或页面选择OpenAI；有多个服务商时显式设置TEACHING_PROVIDER。显式官方provider始终使用固定官方URL，不接受前端传入base_url。旧TEACHING_ENDPOINT用于未显式指定provider的兼容测试配置。
 
 53项测试包含Responses格式、工具/推理项续传、摘要、密钥不落库、不串提供商和旧DeepSeek接口兼容。真实OpenAI账户API尚需用户配置后验证；不要将mock通过写成真实模型成功。
+## 双向检查点接续
+
+先读docs/CHECKPOINT_HANDOFF.md。agents/checkpoints.py登记coding.paused事件，agents/checkpoint_control.py处理学生确认的revise/resume、版本校验和幂等。checkpoint_id默认取Coding运行ID；多次修改通过root_checkpoint_id归属同一检查点族。最终恢复只接受一次；失败重试沿用原request_id和target_step，不能再次推进原阶段。
+
+manual delivery可完全不调用Teaching Agent。Skill通知为教学端报告；实际启用和使用回执目前必须为false，不接受客户端传enabled/installed。Teaching失败不得改写已完成Coding状态。事件、操作、学生原话保存在任务JSON，启动恢复要同步标记操作失败，不能自动重放。
+
+明确项目文件命令支持直接执行和后续返工；普通讨论仍只读。OpenCode配置只显式允许项目文件工具，Shell和外部网络仍被拒绝；不得把本次文件修复描述为已开放全部执行权限。文件写入失败尝试回滚，本地data不清理。verify_opencode_write.py使用真实CLI及本机模拟服务，不是实际模型质量验收。
+
+通用项目文件接续：已移除扩展名/文件名白名单，任意项目内文件路径均可创建写入；文本与二进制分别保存和传输，binary_files快照只含元数据。明确开发授权在未确认计划时也进入可写执行，不将“执行/继续”静默降为只读。执行超时保持900秒；health.coding公开file_access=project_all_types、permission_revision=2和execution_timeout_seconds以核对运行版本。Shell和外部联网权限未改变。

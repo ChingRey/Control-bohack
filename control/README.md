@@ -1,3 +1,14 @@
+# 当前融合版本（2026-11-14）
+
+- Coding：保留百炼/硅基流动配置，开放项目内文件工具；先出计划，聊天内 ✓ 确认并执行 / ✕ 修改，阶段结束暂停。计划批准不依赖聊天关键词。
+- Teacher：真实项目采用只读自然交流，可查看两侧聊天、计划、按行源码和检查点；不预设课程、评分或改代码。
+- 教学结束整理与 evolve() 为可替换接口，当前使用 Mock；Mock 知识不能进入 Coding 检索。真实候选需要审核，检索仍限当前项目；Coding Skill 加载关闭。
+- 校验：127项自动测试、JavaScript语法检查通过；真实CLI模拟服务写入/二进制保留通过；已有真实模型文件写入与Teacher只读核对记录。
+- 接口见 docs/CHECKPOINT_HANDOFF.md、docs/POST_TEACHING_KNOWLEDGE.md；当前架构见 docs/FRAMEWORK_INTEGRATION.md。旧示例说明仅适用于 sample。
+- 本机 API Key 仅在进程内保存，重启需重填；data/、缓存、日志不交付。模型可用性以各自账户为准。
+
+---
+
 # Control 开发交接
 
 一个教人 Vibe Coding 的本地工作台：学生指挥 Coding Agent 开发，Teaching Agent 帮助学生理解技术、审查计划和代码，并记录学习过程。
@@ -92,3 +103,12 @@ control/
 OpenAI使用官方Responses API，记忆摘要也使用同一服务商；不需要登录Codex或读取Codex凭据。此接入只切换Teaching模型，Coding依然是固定示例。提供商URL固定，密钥不写入数据库或浏览器持久化。
 
 当前共53项自动测试；OpenAI网络部分使用模拟响应验证，真实账户调用需本机填写密钥后验证。详见[OpenAI接入说明](docs/OPENAI_SETUP.md)。
+
+## Coding → Teaching 检查点
+
+OpenCode 阶段执行或计划生成成功保存并暂停后，自动发送一次检查点给 Teaching；固定示例执行同样提供该事件，普通聊天和失败执行不发送。教师失败保留开发成果，可用“审查代码”重试。事件字段、版本与只读源码接口见 [API](docs/API.md#coding--teaching-检查点契约)。这不表示已通过行为测试或学生已掌握。
+双向检查点现支持学生确认的修改要求、一次性恢复、每轮修改后再次返回检查点、Skill通知与未启用回执。可新建 `checkpoint_delivery=manual` 的任务，在不连接Teaching Agent时通过HTTP接收事件并恢复下一阶段；[协议与验收](docs/CHECKPOINT_HANDOFF.md)包含字段、状态、错误和重试约定。
+
+已修复明确创建JS文件被分入只读聊天的问题；项目内文本源码和配置支持创建、修改、重命名、删除。计划/讨论仍只读。Shell和外部联网工具尚未开放；实际OpenCode写文件可用 `python scripts/verify_opencode_write.py` 通过本机模拟模型验证，无真实模型费用。
+
+通用项目文件接续：已移除扩展名/文件名白名单，任意项目内文件路径均可创建写入；文本与二进制分别保存和传输，binary_files快照只含元数据。明确开发授权在未确认计划时也进入可写执行，不将“执行/继续”静默降为只读。执行超时保持900秒；health.coding公开file_access=project_all_types、permission_revision=2和execution_timeout_seconds以核对运行版本。Shell和外部联网权限未改变。
