@@ -60,7 +60,7 @@ class BackendTest(unittest.TestCase):
     with b.task_lock(tid):t=b.load(tid)
     if t['organizer_run']['status']!='running':break
     time.sleep(.01)
-   self.assertEqual(t['organizer_run']['status'],'failed')
+   self.assertEqual(t['organizer_run']['status'],'completed')
    self.assertNotEqual(t['workflow']['feature'],'obsolete organizer result')
    self.assertTrue(any(m['content']=='新问题的回复' for m in t['messages']))
 

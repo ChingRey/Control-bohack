@@ -1,4 +1,6 @@
-import copy,io,json,os,time,unittest
+import copy,io,json,os,threading,time,unittest
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 from types import SimpleNamespace
 from unittest.mock import patch
 import backend as b
@@ -40,20 +42,34 @@ class V021IntegrationTests(unittest.TestCase):
   return self.command('teach','turn0')
  def test_all_four_history_and_authorized_strategy_switch(self):
   initial=self.begin();self.assertEqual(initial['strategy_selection_mode'],'initial')
+  self.assertEqual(initial['action']['type'],'ask')
+  decision=self.call('')[1]['decision']
+  self.assertEqual(initial['decision_id'],decision['decision_id'])
+  self.assertEqual(initial['action']['evidence_refs'],decision['evidence_refs'])
+  self.assertIn(decision['objective'],initial['action']['content'])
   self.command('respond','reply0',message='我会检查商品列表是否显示并验证空列表边界。')
   self.command('evaluate','eval0',assessment_mode='formative')
   follow=self.command('teach','turn1');self.assertEqual(follow['strategy_selection_mode'],'continued')
+  self.assertEqual(follow['action']['type'],'explain')
+  self.assertIn('空列表',follow['action']['content'])
   req=self.call('')[1]['requests']['turn1']['contract_request']
   self.assertIn('空列表',req['teaching_history']['recent_turns'][0]['student_reply']['content'])
   self.assertEqual(len(req['teaching_history']['recent_evaluations']),1)
-  self.command('allow-switch','grant',reason='本机管理员授权 Mock 策略切换联调')
+  self.command('allow-switch','grant',reason='本机管理员授权切换计划策略')
   switched=self.command('teach','turn2');self.assertEqual(switched['strategy_selection_mode'],'switched')
+  self.assertEqual(switched['action']['type'],'example')
   self.command('respond','reply2',message='我会增加独立操作并记录实际结果。')
   self.command('evaluate','eval2',assessment_mode='independent_transfer')
   proposal=self.command('evolve','evolve')
   state=self.call('')[1];self.assertEqual(state['experiments'][0]['status'],'pending')
   self.assertFalse(state['applied_mastery']);self.assertEqual(state['skill_unlocks'],[])
   self.assertEqual(len(state['assignments']),3)
+  stored=b.load(self.h.task['id'])['teaching_v021']
+  plans=stored['planner']['assignments'][decision['decision_id']]
+  guided=plans[initial['strategy_id']]['1']['subplans'][decision['decision_id']]
+  self.assertEqual(guided['current_step_index'],2)
+  self.assertEqual(guided['status'],'awaiting_evaluation')
+  self.assertIsNone(guided['last_applied_evaluation_id'])
  def test_http_auth_client_owned_fields_and_version_isolation(self):
   self.assertEqual(self.call('',auth=False)[0],403)
   self.begin()
@@ -65,6 +81,9 @@ class V021IntegrationTests(unittest.TestCase):
   self.begin();before=self.call('')[1]
   self.command('teach','turn0');after=self.call('')[1]
   self.assertEqual(len(after['turns']),len(before['turns']))
+  self.assertEqual(self.command('teach','turn1')['action']['type'],'explain')
+  finished=self.command('teach','end-of-plan')
+  self.assertEqual(finished['next_recommendation'],'request_evaluation')
   self.assertEqual(self.call('teach',{'request_id':'turn0','phase':'summary'})[0],400)
   context=next(iter(after['contexts'].values()))
   self.assertTrue(all(e['artifact_ref'] in context['sources'] for e in context['context']['evidence']))
@@ -176,5 +195,48 @@ class V021IntegrationTests(unittest.TestCase):
   self.assertEqual(decision['knowledge_point_ids'],['edge-cases'])
   turn=self.command('teach','teach-edge-cases')
   self.assertEqual(turn['action']['knowledge_point_ids'],['edge-cases'])
+
+ def test_http_rules_to_subplan_then_confirmed_resume(self):
+  class QuietHandler(b.Handler):
+   def log_message(self, *args):
+    pass
+
+  server=b.LocalHTTPServer(('127.0.0.1',0),QuietHandler)
+  thread=threading.Thread(target=server.serve_forever,daemon=True)
+  thread.start()
+
+  def cleanup():
+   server.shutdown();server.server_close();thread.join(2)
+  self.addCleanup(cleanup)
+
+  def remote(op,body=None,auth=True):
+   address=f'http://127.0.0.1:{server.server_port}{self.h.path}/teaching-v021'
+   headers={'Content-Type':'application/json'}
+   if auth:
+    headers['Authorization']='Bearer test-operator-token'
+   request=Request(address+('/'+op if op else ''),
+                   data=json.dumps(body).encode() if body is not None else None,headers=headers)
+   try:
+    with urlopen(request,timeout=5) as response:
+     return response.status,json.load(response)
+   except HTTPError as error:
+    with error:
+     return error.code,json.load(error)
+
+  self.call=remote
+  first=self.begin()
+  self.assertEqual(first['action']['type'],'ask')
+  self.command('respond','student',message='我先验证列表为空时的界面。')
+  second=self.command('teach','explain')
+  self.assertEqual(second['action']['type'],'explain')
+  self.assertEqual(first['decision_id'],second['decision_id'])
+  self.assertIn('列表为空',second['action']['content'])
+  body={'request_id':'resume-http','confirmed':True,'teaching_completed':True}
+  with patch.object(executor,'execute',side_effect=self.h.execute) as transport:
+   self.assertEqual(self.call('resume',body)[0],202)
+   self.h.wait()
+   self.assertEqual(self.call('resume',body)[0],200)
+   transport.assert_called_once()
+  self.assertEqual(b.load(self.h.task['id'])['step'],1)
 
 if __name__=='__main__':unittest.main()

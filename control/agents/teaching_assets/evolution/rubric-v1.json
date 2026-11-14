@@ -1,0 +1,48 @@
+{
+  "version": "teaching-eval-v1",
+  "formula": "100 * mean(valid item values); null is excluded, no overall score",
+  "values": [
+    0,
+    0.5,
+    1
+  ],
+  "notice": "应用初版量表，未经学生实验校准；评分为模型观察，不是因果证明或掌握认证。",
+  "dimensions": [
+    {
+      "id": "understanding",
+      "name": "理解效果",
+      "student_required": true,
+      "criteria": "学生对本次目标核心关系的解释、预测或判断：错误0，部分正确或仅自述懂了0.5，有独立具体正确表现1。"
+    },
+    {
+      "id": "difficulty",
+      "name": "难度适配",
+      "student_required": true,
+      "criteria": "有学生基础或反馈证据时：明确过难或重复已会且未处理0，部分适配0.5，有证据支持匹配1；沉默不算适配。"
+    },
+    {
+      "id": "pacing",
+      "name": "信息量与节奏",
+      "student_required": false,
+      "criteria": "有明确跳步、重复或过载证据且未处理0，部分处理0.5，有具体证据的适配或有效处理1；字数和回复速度不直接评分。"
+    },
+    {
+      "id": "relevance",
+      "name": "项目相关性",
+      "student_required": false,
+      "criteria": "和当前目标无关或引错项目0，仅通用说明0.5，正确联系本轮真实功能1；没有代码证据不核实代码行正确性。"
+    },
+    {
+      "id": "application",
+      "name": "独立应用",
+      "student_required": true,
+      "criteria": "学生实际尝试后核心错误或完整答案后复述0，关键提示后完成或独立部分正确0.5，无答案帮助独立合理要求或验证1；没尝试记null。"
+    },
+    {
+      "id": "adaptation",
+      "name": "反馈调整",
+      "student_required": true,
+      "criteria": "明确困惑后重复无效讲法0，针对调整后仅自述懂或部分改善0.5，有相近任务具体改善证据1；没调整机会记null。"
+    }
+  ]
+}

@@ -43,7 +43,7 @@ def main():
  provider=ThreadingHTTPServer(('127.0.0.1',0),Provider);threading.Thread(target=provider.serve_forever,daemon=True).start()
  token=secrets.token_urlsafe(32);examples=[]
  try:
-  with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp,patch.object(b,'DATA',Path(tmp)/'workbench'),patch.object(b,'DB',Path(tmp)/'records.sqlite3'),patch.object(executor,'ROOT',Path(tmp)),patch.object(executor,'binary',return_value=exe),patch.object(executor,'CONFIG',{'key':'synthetic-test-only','model':'smoke','url':f'http://127.0.0.1:{provider.server_port}/v1'}),patch.dict(os.environ,{'CONTROL_V021_ACCESS_TOKEN':token,'TEACHING_MODE':'sample','CONTROL_CODING_TIMEOUT_SECONDS':'60'}):
+  with tempfile.TemporaryDirectory(dir=report_path,ignore_cleanup_errors=True) as tmp,patch.object(b,'DATA',Path(tmp)/'workbench'),patch.object(b,'DB',Path(tmp)/'records.sqlite3'),patch.object(executor,'ROOT',Path(tmp)),patch.object(executor,'binary',return_value=exe),patch.object(executor,'CONFIG',{'key':'synthetic-test-only','model':'smoke','url':f'http://127.0.0.1:{provider.server_port}/v1'}),patch.dict(os.environ,{'CONTROL_V021_ACCESS_TOKEN':token,'TEACHING_MODE':'sample','CONTROL_CODING_TIMEOUT_SECONDS':'60'}):
    b.DATA.mkdir()
    server=b.LocalHTTPServer(('127.0.0.1',0),Quiet);threading.Thread(target=server.serve_forever,daemon=True).start();base=f'http://127.0.0.1:{server.server_port}'
    def http(path,body=None,authenticated=True):
@@ -80,7 +80,8 @@ def main():
     examples.append({'operation':op,'http_request':{'request_id':rid,**kw},'http_response':value});return value
    command('configure','config');decision=command('decide','decide')['response']
    assert decision['decision_id']=='decide-decide' and decision['knowledge_point_ids']==['acceptance-criteria']
-   command('teach','teach0')
+   initial=command('teach','teach0')['response']
+   assert initial['action']['type']=='ask' and initial['action']['evidence_refs']==decision['evidence_refs']
    command('respond','student0',message='我会核对正常显示和空列表，并记录实际结果。')
    command('evaluate','evaluation0',assessment_mode='formative');command('teach','teach1')
    command('allow-switch','switch',reason='operator authorized synthetic integration check');command('teach','teach2')
@@ -105,15 +106,15 @@ def main():
    cases=[]
    def step(action,selector=None,**kw):cases.append({'action':action,**({'selector':selector} if selector else {}),**kw})
    def pause():step('wait',ms=350)
-   step('wait',ms=700);step('click','#open-v021');step('fill','#v021-token',value=token);step('click','#v021-login');pause()
+   step('wait',ms=700);step('click','#open-settings');step('click','#teaching-tools-settings > summary');step('click','#open-v021');step('fill','#v021-token',value=token);step('click','#v021-login');pause()
    step('assert_text','#v021-status',text='当前策略');step('assert_value','#v021-token',value='')
-   step('click','#v021-decide');pause();step('click','#v021-teach');pause();step('assert_text','#v021-result',text='MOCK')
+   step('click','#v021-decide');pause();step('click','#v021-teach');pause();step('assert_text','#v021-result',text='学习目标')
    step('fill','#v021-message',value='我会检查购物车操作和边界条件。');step('click','#v021-respond');pause()
    step('click','#v021-formative');pause();step('assert_text','#v021-result',text='MOCK');step('click','#v021-teach');pause();step('assert_text','#v021-status',text='已执行动作：5')
    browser=browser_runner.run({}, {},cases,handler=BrowserHandler,screenshot=report_path/'v021-browser.png')
    assert browser['passed'],browser
    report={'windows_asyncio_native_http':True,'real_http':True,'actual_opencode_cli':True,'pause_resume_once':True,'project_files':['src/products.js','src/cart.js'],
-     'real_provider':False,'teaching_service':'DecideTeachingService (rules + public Mock downstream)','mock_mastery_applied':False,'skill_unlocks':[],
+     'real_provider':False,'teaching_service':'DecideTeachingService (rules, teaching subplans, Mock evaluation/evolution)','mock_mastery_applied':False,'skill_unlocks':[],
      'browser':browser,'public_contract_version':'0.2.1','examples_file':'http-examples.json','synthetic_provider_requests':Provider.count}
    (report_path/'http-examples.json').write_text(json.dumps(examples,ensure_ascii=False,indent=2),encoding='utf-8')
    (report_path/'RESULTS.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
