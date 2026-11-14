@@ -5,7 +5,7 @@
 新增Reflexion/ACE式项目内教学经验闭环：初始经验、独立六维评价、有证据的反思、增量候选、下一轮检索、停用与版本恢复。顶部“设置 → 教学工具与经验 → 教学反思与经验库”可查看管理，右侧仅保留聊天。规则、API与验证边界见 [TEACHING_EVOLUTION](docs/TEACHING_EVOLUTION.md)。旧 teaching/evolve 仍为Mock兼容端口，新闭环使用 teaching/experience-review。未验证真实教学提升。以下为历史交接记录，以本段和当前代码为准。
 # V0.2.1 独立接口集成（2026-11-14）
 
-项目可显式启用独立教学接口。`decide()` 根据检查点、课程和学习状态选课，`teach()`、`evaluate()`、`evolve()` 使用 Mock 联调。启动、恢复与验收见 [接口交接说明](docs/TEACHING_V021_INTEGRATION.md)。
+项目可显式启用独立教学接口。`decide()` 根据检查点、课程和学习状态选课，`teach()` 按教学子计划生成本轮动作。`evaluate()` 和 `evolve()` 使用 Mock 联调。启动、恢复与验收见 [接口交接说明](docs/TEACHING_V021_INTEGRATION.md)。
 
 模型超时统一由设置页配置；默认前台单次60秒/整轮120秒，后台单次60秒/整批180秒。保留HTTP错误分类，Coding默认900秒不变。
 

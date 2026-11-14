@@ -8,7 +8,7 @@ from uuid import uuid4
 
 
 TEACHING_ACTIONS = frozenset({
-    'ask', 'explain', 'example', 'hint', 'practice', 'ask_transfer',
+    'ask', 'explain', 'example', 'hint', 'practice', 'ask_transfer', 'feedback',
 })
 WORKFLOW_ACTIONS = frozenset({'assess', 'pause'})
 SUBPLAN_STATUSES = frozenset({

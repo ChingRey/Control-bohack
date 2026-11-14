@@ -4,7 +4,9 @@
 
 独立边界为 `agents/teaching_v021.py`，四个异步端口仍是公共 TeachingService 的 decide/teach/evaluate/evolve。旧 checkpoint/learning/memory 的 schema_version=1 保留。公共包统一使用 `agents/teaching_contract_v021/public/`，外层 `__init__.py` 提供命名空间隔离。公共类型、校验器、Mock 和 Schema 由这份包提供。
 
-显式配置 V0.2.1 的项目使用 `agents/teaching_service.py`。其中 `decide()` 使用 `agents/decide_service.py` 的离线规则，`teach()`、`evaluate()` 和 `evolve()` 使用公共 Mock。普通项目继续进入自然语言教学入口。
+显式配置 V0.2.1 的项目使用 `agents/teaching_service.py`。其中 `decide()` 使用 `agents/decide_service.py` 的离线规则，`teach()` 将同一条决策、匹配的知识包、学生回答和已分配策略交给 `agents/teaching_turn_adapter.py`。适配层调用 `teaching_methods.teach()` 取得下一步，生成并校验 `TeachingTurn`，再随教学动作存储子计划进度。`evaluate()` 和 `evolve()` 使用公共 Mock。普通项目继续进入自然语言教学入口。
+
+规则选课、服务适配和可选语义复核均位于 `agents/`。`agents/semantic_ranker.py` 可由部署代码注入异步模型调用函数，网站默认使用离线规则。L13 试验请求见 `tests/fixtures/decide_pilot_request.json`。在 `control` 根目录运行 `python -B scripts/smoke_decide.py` 可验证离线选课、跳过教学、子计划教学和 Mock 评价接续。
 
 ## 本地启动和身份权限
 
@@ -62,9 +64,9 @@ P=`/api/tasks/:id/teaching-v021`。所有写操作需稳定request_id，重复�
 ## 当前边界与尚存问题
 
 1. 正式能力/知识点、课程版本负责人、Rubric及独立考核题尚未确认；包内示例不能替代。
-2. 本轮只有Mock教学和本机合成Coding模型服务；没有证明真实模型质量或长期教学有效。
+2. 教学动作由现有子计划和课卡生成，本地即可运行。Mock 评价保留在联调历史中，子计划不会根据固定分数判定达标或重规划。教学步骤按登记顺序执行，策略 `trigger` 的自由文本暂不解析。
 3. 同进程每任务锁串行更新，执行动作和分配随task一次SQLite保存；调用前另存请求。不提供多进程/远程分布式事务，远程服务仍必须以request_id去重；文件与数据库没有跨资源事务。
-4. 同步HTTP在服务调用时持有该任务锁，当前Mock很快；正式服务预算最多120秒，会阻塞同项目后续修改。生产异步队列/多用户鉴权需另行设计。
+4. 同步HTTP在服务调用时持有该任务锁，当前本地选课和教学耗时短；正式服务预算最多120秒，会阻塞同项目后续修改。生产异步队列/多用户鉴权需另行设计。
 5. 本轮记录“执行教学动作”指后台已保存并通过消息API提供展示，不证明学生已阅读；浏览器实际展示另有验收。
 6. 上游不应自报审批标记；install_service是可信部署入口，不能暴露成学生/模型可写API。
 7. 演化实验只登记 `pending`。

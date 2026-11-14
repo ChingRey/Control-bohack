@@ -80,7 +80,8 @@ def main():
     examples.append({'operation':op,'http_request':{'request_id':rid,**kw},'http_response':value});return value
    command('configure','config');decision=command('decide','decide')['response']
    assert decision['decision_id']=='decide-decide' and decision['knowledge_point_ids']==['acceptance-criteria']
-   command('teach','teach0')
+   initial=command('teach','teach0')['response']
+   assert initial['action']['type']=='ask' and initial['action']['evidence_refs']==decision['evidence_refs']
    command('respond','student0',message='我会核对正常显示和空列表，并记录实际结果。')
    command('evaluate','evaluation0',assessment_mode='formative');command('teach','teach1')
    command('allow-switch','switch',reason='operator authorized synthetic integration check');command('teach','teach2')
@@ -107,13 +108,13 @@ def main():
    def pause():step('wait',ms=350)
    step('wait',ms=700);step('click','#open-settings');step('click','#teaching-tools-settings > summary');step('click','#open-v021');step('fill','#v021-token',value=token);step('click','#v021-login');pause()
    step('assert_text','#v021-status',text='当前策略');step('assert_value','#v021-token',value='')
-   step('click','#v021-decide');pause();step('click','#v021-teach');pause();step('assert_text','#v021-result',text='MOCK')
+   step('click','#v021-decide');pause();step('click','#v021-teach');pause();step('assert_text','#v021-result',text='学习目标')
    step('fill','#v021-message',value='我会检查购物车操作和边界条件。');step('click','#v021-respond');pause()
    step('click','#v021-formative');pause();step('assert_text','#v021-result',text='MOCK');step('click','#v021-teach');pause();step('assert_text','#v021-status',text='已执行动作：5')
    browser=browser_runner.run({}, {},cases,handler=BrowserHandler,screenshot=report_path/'v021-browser.png')
    assert browser['passed'],browser
    report={'windows_asyncio_native_http':True,'real_http':True,'actual_opencode_cli':True,'pause_resume_once':True,'project_files':['src/products.js','src/cart.js'],
-     'real_provider':False,'teaching_service':'DecideTeachingService (rules + public Mock downstream)','mock_mastery_applied':False,'skill_unlocks':[],
+     'real_provider':False,'teaching_service':'DecideTeachingService (rules, teaching subplans, Mock evaluation/evolution)','mock_mastery_applied':False,'skill_unlocks':[],
      'browser':browser,'public_contract_version':'0.2.1','examples_file':'http-examples.json','synthetic_provider_requests':Provider.count}
    (report_path/'http-examples.json').write_text(json.dumps(examples,ensure_ascii=False,indent=2),encoding='utf-8')
    (report_path/'RESULTS.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
