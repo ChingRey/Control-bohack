@@ -4,7 +4,10 @@ import json
 import os
 import re
 import time
+from copy import deepcopy
+from uuid import uuid4
 from . import memory, learning, providers, checkpoints, coding_workflow, teaching_input, workflow, workflow_methods, workflow_records, project_safety, teaching_library
+from . import teaching_methods
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -28,7 +31,7 @@ LESSON = {
 }
 ASSETS = Path(__file__).resolve().parent / 'teaching_assets'
 SYSTEM = (ASSETS / 'system.md').read_text(encoding='utf-8')
-ACTIONS = ['ask', 'hint', 'explain', 'summarize', 'ask_transfer', 'assess', 'pause']
+ACTIONS = ['ask', 'hint', 'explain', 'example', 'practice', 'summarize', 'ask_transfer', 'assess', 'pause']
 SKILLS = ['diagnose', 'socratic-review', 'explain', 'assess-summarize']
 KNOWLEDGE = {
  'page-structure':{'title':'HTML、CSS、JavaScript 怎样分工','when':'理解整体项目与页面代码','source_ids':['mdn-dom']},
@@ -50,12 +53,15 @@ def state(t):
   'resume_note':'从当前项目和学生已有判断接着教，不重新开课。','checkpoints':[]})
  s['course'].setdefault('knowledge_preferences',{})
  s['course'].setdefault('selected_knowledge',None)
+ s.setdefault('method_state',{'decision_id':None,'step_index':0})
+ s.setdefault('subplans',{})
  memory.state(t);learning.state(t)
  return s
 
 def context(t, action):
  s=state(t)
  if t.get('mode')=='opencode':return teaching_input.build(t,action)
+ active_strategy=t.get('teaching_strategy') or {}
  files=t.get('files',{})
  source,source_index=checkpoints.source_context(t,files)
  checkpoint=checkpoints.view(t,files)
@@ -68,7 +74,27 @@ def context(t, action):
  selected,focus=memory.select_messages(t,remembered)
  course_view={**s['course'],'checkpoints':s['course']['checkpoints'][-8:],
   'objectives':[{**g,'observations':g['observations'][-5:],'evidence_ids':g['evidence_ids'][-10:]} for g in s['course']['objectives']]}
- ctx={'action':action,'lesson':LESSON,'phase':s['phase'],'hint_level':s['hint_level'],
+ decision=t.get('teaching_decision') or s.get('decision') or t.get('decision')
+ if isinstance(decision,dict):
+  # Boundary adapter for older decide() payload names; planner internals use one schema.
+  decision={**decision,
+   'decision_id':decision.get('decision_id') or decision.get('id'),
+   'goal_id':decision.get('goal_id') or decision.get('capability_id'),
+   'objective':decision.get('objective') or decision.get('learning_objective')}
+ elif t.get('mode')=='sample' or 'mode' not in t:
+  # Compatibility for sample tasks and pre-mode task records until decide() is integrated.
+  # These records have no persisted decision, so keep the legacy lesson objective stable.
+  decision={'decision_id':f"legacy-demo:{t.get('id') or 'task'}:{LESSON['id']}",
+   'goal_id':LESSON['id'],'objective':LESSON['goal'],'success_criteria':[]}
+ valid_evidence_refs=[i for i,m in enumerate(t.get('messages',[])) if m.get('role')=='user']
+ planner_action='review' if action=='checkpoint' else action
+ method=teaching_methods.teach(decision,s,active_strategy,{
+  'stage':t.get('stage'),'step':t.get('step'),
+  'coding_plan':t.get('plan',[]),'coding_plan_draft':t.get('plan_draft',[]),
+  'valid_evidence_refs':valid_evidence_refs,
+ },planner_action)
+ ctx={'action':action,'lesson':LESSON,'strategy':active_strategy,'decision':decision,
+  'teaching_method':method,'phase':s['phase'],'hint_level':s['hint_level'],
   'plan':t['plan'],'plan_draft':t.get('plan_draft',[]),'plan_confirmed':bool(t['plan']),'step':t['step'],
   'project_purpose':checkpoint['user_requirement'] if checkpoint else t.get('title','待办网页：用户添加事项、标记完成，并讨论输入限制和数据保留。'),
   'checkpoint_event':checkpoint,'project_files':source_index,
@@ -78,6 +104,7 @@ def context(t, action):
   'check_type':'source_markers_only_not_behavioral',
   'runtime_observations':t.get('runtime_observations',[]),
   'messages':selected,'current_focus':focus,
+  'valid_evidence_refs':valid_evidence_refs,
   'student_evidence':[{'id':m['id'],'channel':m['channel'],'role':'user','content_location':'messages'} for m in selected if m['role']=='user'],
   'loaded_skills':{name:dispatch_tool('read_teaching_skill',{'name':name},{})['content'] for name in loaded},
   'transfer_question':LESSON['transfer_question'] if s['phase']=='transfer' else None,
@@ -111,8 +138,25 @@ def validate(output, ctx):
  if not isinstance(output.get('transfer_question',''),str): raise ValueError('迁移题格式错误')
  if output['teaching_action']=='ask_transfer' and not output.get('transfer_question','').strip(): raise ValueError('未提供迁移题')
  if type(output.get('hint_level')) is not int or not 0<=output['hint_level']<=3: raise ValueError('提示级别错误')
- if output.get('assessment') not in ('insufficient','developing','candidate'): raise ValueError('评价格式错误')
+ if output.get('assessment') not in ('insufficient','developing','candidate','met'): raise ValueError('评价格式错误')
  if output.get('issue_kind') not in ('hypothesis','confirmed','none'): raise ValueError('问题证据类型错误')
+ criterion_results=output.get('criterion_results',[])
+ if not isinstance(criterion_results,list) or len(criterion_results)>20: raise ValueError('成功标准评估格式错误')
+ seen_criteria=set()
+ for result in criterion_results:
+  if (not isinstance(result,dict) or not isinstance(result.get('criterion_id'),str)
+      or not result['criterion_id'].strip() or type(result.get('passed')) is not bool
+      or not isinstance(result.get('reason',''),str) or len(result.get('reason',''))>500):
+   raise ValueError('成功标准评估条目格式错误')
+  if result['criterion_id'] in seen_criteria: raise ValueError('成功标准评估存在重复 ID')
+  seen_criteria.add(result['criterion_id'])
+ diagnosis=output.get('teaching_diagnosis')
+ if diagnosis is not None:
+  if not isinstance(diagnosis,dict) or set(diagnosis)-{'error_type','misconceptions','recommended_action','reason'}: raise ValueError('教学诊断格式错误')
+  if diagnosis.get('error_type') not in (None,'conceptual_gap','procedural_gap','application_gap','execution_error','transfer_gap','insufficient_evidence'): raise ValueError('困难类型无效')
+  if not isinstance(diagnosis.get('misconceptions',[]),list) or len(diagnosis.get('misconceptions',[]))>3 or any(not isinstance(x,str) or len(x)>240 for x in diagnosis.get('misconceptions',[])): raise ValueError('教学困难描述格式错误')
+  if diagnosis.get('recommended_action') not in teaching_methods.TEACHING_ACTIONS|{None}: raise ValueError('重规划动作不合法')
+  if not isinstance(diagnosis.get('reason',''),str) or len(diagnosis.get('reason',''))>500: raise ValueError('重规划理由格式错误')
  for key in ('citations','source_ids','student_evidence_ids'):
   if not isinstance(output.get(key),list): raise ValueError('证据列表缺失')
  for cite in output['citations']:
@@ -133,6 +177,21 @@ def validate(output, ctx):
   output['validation_warnings']=['学生引用编号无效：本轮保留教学回复，不采纳掌握或升级建议。']
   output['student_evidence_ids']=[];output['assessment']='insufficient';output['upgrade_suggestion']=''
  if output['assessment']!='insufficient' and not output['student_evidence_ids']: raise ValueError('评价需要学生证据')
+ criteria=ctx.get('teaching_method',{}).get('subplan',{}).get('success_criteria',[])
+ criteria_by_id={item['criterion_id']:item for item in criteria if isinstance(item,dict) and isinstance(item.get('criterion_id'),str)}
+ if any(result['criterion_id'] not in criteria_by_id for result in criterion_results): raise ValueError('评估引用了当前目标不存在的成功标准')
+ if output['assessment']=='met':
+  required_ids={item['criterion_id'] for item in criteria if isinstance(item,dict) and item.get('required',True)}
+  results_by_id={item['criterion_id']:item for item in criterion_results}
+  transfer=ctx.get('transfer_answer')
+  transfer_evidence=bool(transfer and transfer.get('message_id') in output['student_evidence_ids'])
+  if (ctx.get('action')!='evaluate' or not output['student_evidence_ids'] or not required_ids
+      or any(cid not in results_by_id or not results_by_id[cid]['passed'] for cid in required_ids)):
+   output['assessment']='candidate' if transfer_evidence else 'developing'
+   output.setdefault('validation_warnings',[]).append('未能用学生证据逐项证明所有必需成功标准；目标不会标为完成。')
+  elif not transfer_evidence:
+   output['assessment']='developing'
+   output.setdefault('validation_warnings',[]).append('尚无独立迁移作答证据；目标不会标为完成。')
  if output['assessment']=='candidate' and not ctx['transfer_answer']: raise ValueError('没有迁移作答不能建议掌握')
  if output['assessment']=='candidate' and ctx['transfer_answer']['message_id'] not in output['student_evidence_ids']: raise ValueError('候选掌握必须引用迁移作答')
  if not isinstance(output.get('upgrade_suggestion'),str): raise ValueError('改进建议格式错误')
@@ -381,8 +440,36 @@ def run(t, action='message', progress=None):
   return reply
  turn_id=s.get('next_turn_id',max((r['id'] for r in s['turns']),default=-1)+1)
  output=validate(agent.respond(ctx,progress),ctx)
- s['phase']=output['next_phase'];s['hint_level']=max(s['hint_level'],output['hint_level'])
- s['assessment']=output['assessment'];s['plan']=output['plan']
+ s['phase']=output['next_phase'];s['hint_level']=teaching_methods.update_hint_level(s['hint_level'],action,output)
+ s['plan']=output['plan']
+ if action=='evaluate':
+  s['assessment']=output['assessment']
+  active_method=ctx['teaching_method'];active_subplan=active_method['subplan']
+  # The public API retains its product-facing assessment labels; the planner consumes one canonical status.
+  goal_status={'insufficient':'insufficient_evidence','developing':'partial','candidate':'partial','met':'met'}[output['assessment']]
+  s['last_evaluation']={
+   'evaluation_id':f'eval-{turn_id}',
+   'decision_id':active_subplan['decision_id'],
+   'goal_id':active_subplan['goal_id'],
+   'subplan_id':active_subplan['id'],
+   'subplan_version':active_subplan['version'],
+   'goal_status':goal_status,
+   'criterion_results':output.get('criterion_results',[]),
+   'issue_kind':output['issue_kind'],
+   'teaching_diagnosis':output.get('teaching_diagnosis',{}),
+   'evidence_refs':output['student_evidence_ids'],
+   'transfer_evidence_ref':ctx['transfer_answer']['message_id']
+    if ctx.get('transfer_answer') and ctx['transfer_answer']['message_id'] in output['student_evidence_ids'] else None,
+  }
+  pending=s.get('pending_transfer');answer=s.get('transfer_answer')
+  if (isinstance(pending,dict) and pending.get('status','pending')=='pending'
+      and isinstance(answer,dict)
+      and (not answer.get('event_id') or answer.get('event_id')==pending.get('event_id'))
+      and (not answer.get('decision_id') or answer.get('decision_id')==pending.get('decision_id'))
+      and (not answer.get('subplan_id') or answer.get('subplan_id')==pending.get('subplan_id'))
+      and (answer.get('message_id') in output['student_evidence_ids'])):
+   pending['status']='consumed'
+   pending['consumed_by_evaluation_id']=s['last_evaluation']['evaluation_id']
  if output.get('mindmap'):
   s['mindmap']=output['mindmap'];s['mindmap_code_hash']=ctx['code_hash']
  course=s['course'];update=output.get('course_update',{})
@@ -395,12 +482,52 @@ def run(t, action='message', progress=None):
  course['last_code_hash']=ctx['code_hash']
  course['checkpoints'].append({'turn':turn_id,'goal':output['plan']['goal'],'next_step':output['plan']['next_step'],
   'open_questions':output['plan']['open_questions'],'student_evidence_ids':output['student_evidence_ids'],'code_hash':ctx['code_hash']})
- if output['teaching_action']=='ask_transfer':
-  s['pending_transfer']={'question':output['transfer_question'],'code_hash':ctx['code_hash']}
-  s['transfer_answer']=None
  s['turns'].append({'id':turn_id,'action':action,'code_hash':ctx['code_hash'],'loaded_skills':list(ctx['loaded_skills']),
   'checkpoint_id':ctx['checkpoint_event']['checkpoint_id'] if ctx.get('checkpoint_event') else None,
+  'strategy_version_id':t.get('strategy_version_id'),
+  'decision_id':ctx['teaching_method'].get('decision_id'),'decision':ctx.get('decision'),
+  'teaching_method':ctx['teaching_method'],'created_at':time.time(),
   'provider':agent.metadata(),'phase_before':ctx['phase'],'tools':getattr(agent,'tool_trace',[]),'result':output})
+ method_record={**ctx['teaching_method'],'executed_action':output['teaching_action'],
+  'evaluation':deepcopy(s.get('last_evaluation')) if action=='evaluate' else None}
+ next_step=ctx['teaching_method'].get('next_step',{})
+ execution_result=None
+ if agent.mode=='model' and next_step.get('action_source')=='subplan' and next_step.get('step_id'):
+  execution_result={
+   'execution_id':str(uuid4()),
+   'subplan_id':ctx['teaching_method']['subplan']['id'],
+   'subplan_version':ctx['teaching_method']['subplan']['version'],
+   'step_id':next_step['step_id'],'action':output['teaching_action'],
+   'success':True,'result_ref':f'teaching-turn:{turn_id}','failure_reason':None,
+  }
+  execution_status=teaching_methods.record_step(s,ctx['teaching_method'],execution_result,enabled=True)
+ else:
+  execution_status=teaching_methods.store_subplan(s,ctx['teaching_method'],enabled=agent.mode=='model')
+ method_record['execution_result']=execution_result
+ method_record['execution_status']=execution_status
+ s['turns'][-1]['teaching_method']=method_record
+ if action=='evaluate' and agent.mode=='model':
+  reconcile=teaching_methods.teach(ctx.get('decision'),s,ctx.get('strategy'),{
+   'stage':t.get('stage'),'step':t.get('step'),'coding_plan':t.get('plan',[]),
+   'valid_evidence_refs':ctx['valid_evidence_refs']},'reconcile')
+  teaching_methods.store_subplan(s,reconcile,enabled=True)
+  pending=s.get('pending_transfer')
+  active=s.get('subplans',{}).get(pending.get('decision_id')) if isinstance(pending,dict) else None
+  if (isinstance(pending,dict) and pending.get('status')=='pending'
+      and (not isinstance(active,dict) or active.get('id')!=pending.get('subplan_id')
+           or active.get('version')!=pending.get('subplan_version'))):
+   pending['status']='stale'
+   pending['invalidated_by_evaluation_id']=s.get('last_evaluation',{}).get('evaluation_id')
+ if output['teaching_action']=='ask_transfer':
+  decision_id=ctx['teaching_method'].get('decision_id')
+  subplan=s.get('subplans',{}).get(decision_id,ctx['teaching_method']['subplan'])
+  s['pending_transfer']={
+   'event_id':str(uuid4()),'decision_id':decision_id,
+   'subplan_id':subplan['id'],'subplan_version':subplan['version'],
+   'status':'pending','question':output['transfer_question'],
+   'code_hash':ctx['code_hash'],'created_at':time.time(),
+  }
+  s['transfer_answer']=None
  learning.apply(t,output.get('learning_update',{}),turn_id,ctx['code_hash'])
  s['memory']['revision']+=1
  s['memory']['last_loaded_ids']=ctx['context_usage']['loaded_message_ids']
