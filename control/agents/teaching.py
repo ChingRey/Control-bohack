@@ -311,8 +311,11 @@ def request_model(req,budget,progress):
   remaining=budget['deadline']-time.monotonic()
   if remaining<=0: raise ValueError('本轮等待超过240秒，请稍后重试')
   budget['attempts']+=1
+  started=time.monotonic()
+  timing={'attempt':budget['attempts']}
   try:
-   with urlopen(req,timeout=min(network_timeout(),remaining)) as response:return json.load(response)
+   with urlopen(req,timeout=min(network_timeout(),remaining)) as response:
+    value=json.load(response);timing['status']='completed';return value
   except HTTPError as err:
    if not (err.code==429 or 500<=err.code<600) or retries>=2 or budget['attempts']>=5: raise
    delay=2**retries
@@ -326,6 +329,10 @@ def request_model(req,budget,progress):
    if time.monotonic()+delay>=budget['deadline']: raise ValueError('服务繁忙且本轮等待时间已用完，请稍后重试') from None
    retries+=1;progress('retrying',f'模型服务暂时繁忙，{delay:g}秒后自动重试（{retries}/2）')
    time.sleep(delay)
+  finally:
+   timing['elapsed_seconds']=round(time.monotonic()-started,3)
+   timing.setdefault('status','failed')
+   budget.setdefault('requests',[]).append(timing)
  raise ValueError('本轮请求预算已用完')
 
 def tools():
@@ -410,11 +417,12 @@ def engineering_alignment(task,ctx):
 
 
 def run(t, action='message', progress=None):
+ preparation_started=time.monotonic()
  s=state(t);agent=TeachingAgent();agent.history=t['messages'];agent.project_source=t.get('files',{});agent.progress=progress or (lambda *a:None)
  agent.request_budget={'attempts':0,'deadline':time.monotonic()+240}
  if agent.mode=='model' and t.get('mode')!='opencode':memory.prepare(t,agent.summarize_memory,agent.progress)
  ctx=context(t,action)
- ctx['shared_materials']=workflow.shared(t)
+ ctx['shared_materials']=teaching_input.compact_shared(workflow.shared(t))
  ctx['engineering_alignment']=engineering_alignment(t,ctx)
  ctx['stage_methods']=workflow_methods.packet(workflow.state(t)['stage']) if workflow_records.initialize(t)['mode']=='guided' else {}
  ctx['behavior_records']=t.get('behavior_records',[])[-20:]
@@ -426,15 +434,18 @@ def run(t, action='message', progress=None):
  if workflow_records.initialize(t)['mode']=='guided' and (ctx['safety_report']['network_present'] or ctx['safety_report']['publication_blocked']):
   title,instructions=workflow_methods.METHODS['safety-guard'];ctx['stage_methods']['safety-guard']={'title':title,'instructions':instructions}
  ctx['teacher_records']={n:workflow.state(t)['materials'][n][-1:] for n in ('coverage','learner')}
+ if memory.size(ctx)>memory.MAX_CONTEXT_CHARS:
+  raise ValueError('本轮教学材料超过80000个JSON字符，请缩小材料范围；原始记录已保留')
  if t.get('mode')=='opencode':
   ctx['teaching_library']=teaching_library.packet(t,action,budget=max(0,memory.MAX_CONTEXT_CHARS-memory.size(ctx)-100))
   ctx['context_usage']['teaching_library_characters']=teaching_library.size(ctx['teaching_library'])
   ctx['context_usage']['json_characters']=memory.size(ctx)
+  ctx['context_usage']['preparation_seconds']=round(time.monotonic()-preparation_started,3)
   reply=project_chat(agent,ctx,progress or (lambda *a:None))
   if agent.mode=='model':teaching_input.remember(t,ctx,reply,getattr(agent,'continuity_notes',None))
   s['turns'].append({'id':s.get('next_turn_id',0),'action':action,'code_hash':ctx['code_hash'],'loaded_skills':[],
     'provider':agent.metadata(),'teaching_library':teaching_library.trace(ctx['teaching_library'],agent.mode=='model'),'workflow_methods':list(ctx['stage_methods']),'material_revision':ctx['shared_materials']['revision'],'tools':getattr(agent,'tool_trace',[]),'result':{'reply':reply,'mode':'project_chat'},'checkpoint_id':(t.get('coding_checkpoints') or [{}])[-1].get('checkpoint_id'),
-    'context_usage':ctx['context_usage'],'request_attempts':agent.request_budget['attempts'],'continuity_revision':s.get('continuity',{}).get('revision',0)})
+    'context_usage':ctx['context_usage'],'request_attempts':agent.request_budget['attempts'],'request_timings':agent.request_budget.get('requests',[]),'provider_usage':getattr(agent,'usage',[]),'continuity_revision':s.get('continuity',{}).get('revision',0)})
   s['next_turn_id']=s.get('next_turn_id',0)+1
   s['course']['last_code_hash']=ctx['code_hash']
   return reply
@@ -541,7 +552,7 @@ def project_chat(agent,ctx,progress):
   return '【尚未连接 Teaching 模型】我可以读取本项目的 Coding 对话、开发计划和代码。连接模型后可直接交流；当前不会自动教学、评分或修改文件。'
  system=(ASSETS / 'project_teacher.md').read_text(encoding='utf-8')
  system+='\n'+teaching_library.catalog()['guidance']
- messages=[{'role':'system','content':system},{'role':'user','content':json.dumps(ctx,ensure_ascii=False)}]
+ messages=[{'role':'system','content':system},{'role':'user','content':json.dumps(ctx,ensure_ascii=False,separators=(',',':'))}]
  agent.tool_trace=[]
  budget=agent.request_budget
  read_tools=[t for t in tools() if t['function']['name'] in ('read_project_file','read_message_history')]
@@ -560,6 +571,7 @@ def project_chat(agent,ctx,progress):
    raise ValueError('Teaching网络连接失败：请检查服务地址、网络或代理；消息已保存') from None
   except OSError:raise ValueError('Teaching网络连接中断；消息已保存，可重试') from None
   msg=raw['choices'][0]['message'];calls=msg.get('tool_calls',[])
+  agent.usage=getattr(agent,'usage',[])+[raw.get('usage',{})]
   if calls:
    if len(calls)>5:raise ValueError('只读工具调用数量超出预算')
    messages.append(msg)

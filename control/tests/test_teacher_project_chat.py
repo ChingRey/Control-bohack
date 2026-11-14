@@ -5,6 +5,19 @@ from unittest.mock import patch
 from agents import teaching
 
 class TeacherProjectChatTests(unittest.TestCase):
+ def test_named_file_question_is_answered_in_one_call_without_memory_summarization(self):
+  t=self.task();t['messages'][-1]['content']='解释 src/dinosaur.js:1'
+  def answer(req,budget,progress):
+   budget['attempts']+=1
+   return {'choices':[{'message':{'content':'height 是42。'}}],'usage':{'output_tokens':8}}
+  with patch.dict(os.environ,{'TEACHING_MODE':'model','TEACHING_API_KEY':'fixture-key','TEACHING_MODEL':'fixture-model'}),patch.object(teaching.memory,'prepare') as summarize,patch.object(teaching.providers,'request',return_value=None) as send,patch.object(teaching,'request_model',side_effect=answer):
+   teaching.run(t)
+  summarize.assert_not_called();self.assertEqual(send.call_count,1)
+  ctx=__import__('json').loads(send.call_args.args[1][1]['content'])
+  self.assertEqual(ctx['files']['src/dinosaur.js'][0]['line'],1)
+  turn=t['teaching']['turns'][-1]
+  self.assertEqual(turn['request_attempts'],1)
+  self.assertEqual(turn['provider_usage'],[{'output_tokens':8}])
  def task(self):
   return {'id':'session','mode':'opencode','title':'Dinosaur','plan':['Jump'],'plan_draft':['Jump'],'step':0,
    'files':{'src/dinosaur.js':'export const height = 42;'},'changes':[],'checks':[],

@@ -16,6 +16,54 @@ spec=importlib.util.spec_from_file_location('workbench_backend',Path(__file__).r
 b=importlib.util.module_from_spec(spec);spec.loader.exec_module(b)
 
 class BackendTest(unittest.TestCase):
+ def test_organizer_requests_coalesce_into_one_followup(self):
+  t=self.call('/tasks',{'coding_mode':'opencode'});tid=t['id']
+  entered=threading.Event();release=threading.Event();calls=[]
+  def organize(work):
+   calls.append(work['id']);entered.set()
+   if len(calls)==1 and not release.wait(5):raise ValueError('test organizer wait expired')
+  with patch.object(b.workflow_records,'organize',side_effect=organize):
+   with b.task_lock(tid):b.start_organizer(b.load(tid))
+   self.assertTrue(entered.wait(2))
+   try:
+    for _ in range(3):
+     with b.task_lock(tid):b.start_organizer(b.load(tid))
+    self.assertEqual(len(calls),1)
+   finally:release.set()
+   for _ in range(200):
+    with b.task_lock(tid):t=b.load(tid)
+    if len(calls)==2 and t['organizer_run']['status']=='completed':break
+    time.sleep(.01)
+   self.assertEqual(len(calls),2)
+   self.assertFalse(t.get('organizer_pending'))
+
+ def test_chat_runs_during_organizing_and_obsolete_material_cannot_overwrite_it(self):
+  t=self.call('/tasks',{'coding_mode':'opencode'});tid=t['id']
+  entered=threading.Event();release=threading.Event();answered=threading.Event()
+  def organize(work):
+   entered.set()
+   if not release.wait(5):raise ValueError('test organizer wait expired')
+   work['workflow']['feature']='obsolete organizer result'
+  def reply(work,action,progress):
+   answered.set();return '新问题的回复'
+  with patch.object(b.workflow_records,'organize',side_effect=organize),patch.object(b.teaching,'run',side_effect=reply):
+   with b.task_lock(tid):
+    t=b.load(tid);b.workflow_records.initialize(t)['auto_organize']=False;b.save(t);b.start_organizer(t)
+   self.assertTrue(entered.wait(2))
+   try:
+    t=self.call('/tasks/'+tid+'/chat/send',{'channel':'teaching','message':'新问题','request_id':'during-organizer'})
+    self.assertTrue(answered.wait(2),'聊天不应等待后台整理')
+    self.assertEqual(t['teaching_run']['status'],'completed')
+    self.assertEqual(t['organizer_run']['status'],'running')
+   finally:release.set()
+   for _ in range(200):
+    with b.task_lock(tid):t=b.load(tid)
+    if t['organizer_run']['status']!='running':break
+    time.sleep(.01)
+   self.assertEqual(t['organizer_run']['status'],'failed')
+   self.assertNotEqual(t['workflow']['feature'],'obsolete organizer result')
+   self.assertTrue(any(m['content']=='新问题的回复' for m in t['messages']))
+
  @classmethod
  def setUpClass(cls):
   cls.temp=tempfile.TemporaryDirectory();b.DATA=Path(cls.temp.name);b.DB=b.DATA/'records.sqlite3'

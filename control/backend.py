@@ -183,7 +183,11 @@ def start_teaching(t, action='message'):
     save(fresh)
   try:
    progress('reading','正在读取当前代码与学习记录')
-   snapshot(work);source_files=work['files'].copy();source_assets=work['binary_files'].copy()
+   # Teaching needs a source snapshot, not UI history, runtime status and knowledge lists.
+   work['files'],assets=project_files.scan(project(work['id']))
+   work['binary_files']=project_files.asset_metadata(assets)
+   work['project_hash']=workflow.digest(work['files'],assets)
+   source_files=work['files'].copy();source_assets=work['binary_files'].copy()
    reply=teaching.run(work,action,progress)
    message(work,'teaching','assistant',reply)
    result={'status':'completed','detail':'回复已完成'}
@@ -392,8 +396,9 @@ def start_verification(t,kind,body):
   drain_chat(t['id'])
  threading.Thread(target=worker,daemon=True).start()
 
-def task_busy(t):
- return any(t.get(k,{}).get('status') in ('queued','running') for k in ('coding_run','teaching_run','organizer_run','verification_run'))
+def task_busy(t,include_organizer=True):
+ fields=('coding_run','teaching_run','verification_run')+ (('organizer_run',) if include_organizer else ())
+ return any(t.get(k,{}).get('status') in ('queued','running') for k in fields)
 
 def finish_queue_request(tid,field,job_id):
  with task_lock(tid):
@@ -419,7 +424,7 @@ def drain_chat(tid):
  with task_lock(tid):
   try:t=load(tid)
   except ValueError:return
-  if task_busy(t):return
+  if task_busy(t,include_organizer=False):return
   row=next((m for m in t['messages'] if m.get('queue_status')=='queued'),None)
   if not row:return
   row['queue_status']='delivered';t['_queue_launch_id']=row['request_id'];save(t)
@@ -444,6 +449,8 @@ def drain_chat(tid):
    row['queue_status']='needs_retry';save(t)
 
 def start_organizer(t):
+ if t.get('organizer_run',{}).get('status') in ('queued','running'):
+  t['organizer_pending']=True;save(t);return
  if task_busy(t):raise ValueError('当前任务仍在执行，整理可稍后重试')
  run={'id':str(uuid.uuid4()),'status':'running','started_at':time.time()};t['organizer_run']=run;save(t)
  work=json.loads(json.dumps(t));baseline=task_signature(t)
@@ -456,7 +463,11 @@ def start_organizer(t):
    if fresh.get('organizer_run',{}).get('id')!=run['id']:return
    if task_signature(fresh)!=baseline:result={'status':'failed','detail':'材料已变化，未采用过期整理结果'}
    elif result['status']=='completed':fresh['workflow']=work['workflow']
-   fresh['organizer_run'].update(result);save(fresh)
+   fresh['organizer_run'].update(result,elapsed_seconds=round(time.time()-run['started_at'],1))
+   pending=fresh.pop('organizer_pending',False)
+   save(fresh)
+   if pending and not task_busy(fresh) and not any(m.get('queue_status')=='queued' for m in fresh['messages']):
+    start_organizer(fresh)
   drain_chat(work['id'])
  threading.Thread(target=worker,daemon=True).start()
 

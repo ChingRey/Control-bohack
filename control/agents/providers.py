@@ -55,7 +55,8 @@ def request(config,messages,max_tokens,tools=None,json_mode=False):
     if target.hostname in ('api.openai.com','api.deepseek.com','api.siliconflow.cn') and not config['key']:raise ValueError('请先配置所选服务商的API Key')
     if config['protocol']=='responses':
         payload={'model':config['model'],'input':response_input(messages),'max_output_tokens':max(4000,max_tokens),
-                 'store':False,'include':['reasoning.encrypted_content'],'text':{'format':{'type':'json_object'}}}
+                 'store':False,'include':['reasoning.encrypted_content']}
+        if json_mode:payload['text']={'format':{'type':'json_object'}}
         if tools:
             payload['tools']=[{'type':'function',**copy.deepcopy(t['function']),'strict':False} for t in tools]
         if config['model'].startswith(('gpt-5','gpt-6','o3','o4')):payload['reasoning']={'effort':'low'}
@@ -64,7 +65,7 @@ def request(config,messages,max_tokens,tools=None,json_mode=False):
         if tools:payload['tools']=tools
         if target.hostname=='api.deepseek.com':payload['thinking']={'type':'disabled'}
         if json_mode:payload['response_format']={'type':'json_object'}
-    return Request(endpoint,data=json.dumps(payload,ensure_ascii=False).encode(),headers={'Content-Type':'application/json',**({'Authorization':'Bearer '+config['key']} if config['key'] else {})})
+    return Request(endpoint,data=json.dumps(payload,ensure_ascii=False,separators=(',',':')).encode(),headers={'Content-Type':'application/json',**({'Authorization':'Bearer '+config['key']} if config['key'] else {})})
 
 def normalize(config,raw):
     if config['protocol']!='responses':return raw

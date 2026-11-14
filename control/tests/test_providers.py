@@ -19,6 +19,13 @@ def response(text):
  return {'status':'completed','output':[{'type':'message','role':'assistant','content':[{'type':'output_text','text':text}]}],'usage':{'input_tokens':30,'output_tokens':10}}
 
 class ProviderTests(unittest.TestCase):
+ def test_openai_plain_chat_does_not_force_json_but_structured_calls_do(self):
+  with patch.dict(os.environ,{'TEACHING_PROVIDER':'openai','TEACHING_MODEL':'gpt-test','OPENAI_API_KEY':'test-key'},clear=True):
+   config=providers.settings()
+   plain=json.loads(providers.request(config,[{'role':'user','content':'你好'}],2600,json_mode=False).data)
+   structured=json.loads(providers.request(config,[],1100,json_mode=True).data)
+   self.assertNotIn('text',plain)
+   self.assertEqual(structured['text']['format']['type'],'json_object')
  def fixture(self):
   from test_teaching import TeachingTests
   value=TeachingTests();value.setUp();return value

@@ -6,6 +6,16 @@ from . import checkpoints, coding_workflow, knowledge, memory
 
 SOURCE_BUDGET = 6500
 
+
+def compact_shared(value):
+    """Keep both draft and confirmed semantics without sending identical text twice."""
+    value = copy.deepcopy(value)
+    for name, rows in value.get('materials', {}).items():
+        confirmed = value.get('confirmed_materials', {}).get(name)
+        if confirmed and rows and rows[-1] == confirmed:
+            value['materials'][name] = [{'same_as_confirmed': True, 'revision': confirmed['revision']}]
+    return value
+
 def content_note(note):
     # Workflow/acceptance facts come from the backend, never from model memory.
     return not re.search(r'✓|✕|已执行|未执行|待验收|验收通过|检查通过|不会自动', note.get('text',''))
@@ -71,6 +81,26 @@ def build(task, action):
         ids.add(initial)
     if focus is not None:
         ids.add(focus)
+    # A named file is unambiguous evidence: preload its requested lines locally,
+    # avoiding a model round trip just to discover and read that same path.
+    # Never guess files for a general question or load paths outside this snapshot.
+    if not review and focus is not None:
+        question = history[focus]['content']
+        for name in source:
+            match = re.search(r'(?<![\w/.-])'+re.escape(name)+r'(?![\w/.-])(?::(\d+))?', question)
+            if not match:
+                continue
+            start = max(1, int(match[1]) - 10) if match[1] else 1
+            rows = []
+            for number, line in enumerate(source[name].splitlines(), 1):
+                if not start <= number < start + 80:
+                    continue
+                candidate = {**selected, name: rows + [{'line': number, 'text': line}]}
+                if memory.size(candidate) > SOURCE_BUDGET:
+                    break
+                rows = candidate[name]
+            if rows:
+                selected[name] = rows
     messages = []
     seen = set()
     for i in sorted(ids):

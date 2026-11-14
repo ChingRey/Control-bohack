@@ -7,6 +7,23 @@ from agents import teaching, teaching_input as ti, checkpoints
 
 
 class CompactTeachingInputTests(unittest.TestCase):
+    def test_named_source_line_is_preloaded_without_extra_model_request(self):
+        task=self.task()
+        task['messages'].append({'channel':'teaching','role':'user','content':'解释 src/game.js:250 这一行'})
+        ctx=teaching.context(task,'message')
+        self.assertIn(250,[row['line'] for row in ctx['files']['src/game.js']])
+        self.assertNotIn('unrelated.js',ctx['files'])
+        self.assertLessEqual(ti.memory.size(ctx['files']),ti.SOURCE_BUDGET)
+
+    def test_confirmed_material_dedup_preserves_distinct_draft(self):
+        confirmed={'revision':1,'content':'完整原话','status':'confirmed'}
+        shared={'materials':{'requirements':[confirmed]},'confirmed_materials':{'requirements':confirmed}}
+        compact=ti.compact_shared(shared)
+        self.assertEqual(compact['confirmed_materials']['requirements']['content'],'完整原话')
+        self.assertTrue(compact['materials']['requirements'][0]['same_as_confirmed'])
+        self.assertEqual(shared['materials']['requirements'][0],confirmed)
+        shared['materials']['requirements']=[{'revision':2,'content':'新草稿','status':'draft'}]
+        self.assertEqual(ti.compact_shared(shared),shared)
     def task(self):
         before = {'src/game.js':'\n'.join('const v'+str(i)+' = '+str(i)+';' for i in range(300)),
                   'unrelated.js':'// do not preload this'}

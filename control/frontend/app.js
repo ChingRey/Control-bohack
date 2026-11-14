@@ -10,12 +10,13 @@ function renderFiles(){$('files').replaceChildren();Object.keys(task.files).forE
 function render(){const dirty=hasCodeChanges()&&task.files[file]!==$('code').value,draft=dirty?$('code').value:null,oldFile=file,oldSaved=saved;$('task-title').textContent=task.title||'新项目';$('project').textContent=task.title||'新项目';renderCodingWorkflow();if(!(file in task.files))file=Object.keys(task.files)[0]||'';renderFiles();saved=task.files[file]||'';$('code').value=saved;lines();$('filename').textContent=file||'空项目';$('code').disabled=!file;$('code').placeholder=file?'':'尚无文件，请在Coding聊天中描述你想开发的项目';$('save').disabled=!file;renderDevelopmentPlan();$('changes').textContent=task.changes.length?'已保存 '+task.changes.length+' 次代码修改':'尚无代码修改';renderChats();$('checks').textContent=task.checks.map(c=>(c.pass?'✓ ':'○ ')+c.name).join('\n');$('run').disabled=busy||!task.plan.length||task.step>=task.plan.length;renderTeacherStatus();if(previewTaskId&&previewTaskId!==task.id){runtimeObservations=[];previewTaskId=null;$('runtime-frame').src='about:blank';if(!$('runtime-panel').hidden)loadPreview()}$('connection').textContent='本地后端已连接 · SQLite 已保存';localStorage.setItem('control-workbench-task',task.id);if(dirty&&file===oldFile){$('code').value=draft;saved=oldSaved;lines()}if(window.renderWorkflow)window.renderWorkflow()}
 function setBusy(value){busy=value;document.querySelectorAll('#run,#save,#review-teaching,#evaluate-teaching,#verify,#plan-confirm,#restart-example,#knowledge-topics button,.plan-choice').forEach(b=>b.disabled=value);if(!value&&task){$('run').disabled=!task.plan.length||task.step>=task.plan.length;$('save').disabled=!file}}
 async function waitForTeacher(){
- while(['coding_run','teaching_run','organizer_run','verification_run'].some(k=>['queued','running'].includes(task[k]?.status))){
+ while(['coding_run','teaching_run','verification_run'].some(k=>['queued','running'].includes(task[k]?.status))){
   await new Promise(r=>setTimeout(r,900));
   task=await api('/tasks/'+task.id);render();
  }
  if(task.coding_run?.status==='failed')toast(task.coding_run.detail||'Coding执行失败，阶段未推进');
  if(task.teaching_run?.status==='failed')toast('本次回复未完成，消息已保存，可点击重试');
+ if(['queued','running'].includes(task.organizer_run?.status))pollChat();
 }
 async function perform(fn,optimistic){
  if(busy)return false;
