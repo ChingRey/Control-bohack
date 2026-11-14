@@ -1,7 +1,7 @@
 // Project-local experience controls. Model text is always rendered as text, never HTML.
 (() => {
  const host=document.createElement('details');host.id='teaching-evolution';
- const heading=document.createElement('summary');heading.textContent='教学反思与经验库';
+ const heading=document.createElement('summary');heading.textContent='项目反思记录';
  const status=document.createElement('p'),open=document.createElement('button');open.textContent='查看与管理';open.id='experience-open';
  host.append(heading,status,open);document.querySelector('.teaching-overview')?.append(host);
  const dialog=document.createElement('dialog');dialog.id='experience-dialog';dialog.className='learning-dialog';document.body.append(dialog);
@@ -15,16 +15,16 @@
  const loadLimits=async()=>{try{const health=await api('/health');for(const [key,input] of Object.entries(limitInputs))input.value=health.model_timeouts?.[key]??''}catch(e){limitNote.textContent=e.message}};
  limitSave.onclick=async()=>{try{const value=Object.fromEntries(Object.entries(limitInputs).map(([key,input])=>[key,Number(input.value)]));await api('/settings/timeouts',value);limitNote.textContent='已保存，下次任务生效；当前请求不强制中断。'}catch(e){limitNote.textContent=e.message}};
  limitSettings.append(limitNote,limitSave);document.getElementById('settings-dialog').append(limitSettings);
- document.getElementById('settings').addEventListener('click',loadLimits);
+ document.getElementById('open-settings').addEventListener('click',loadLimits);
  const labels={active:'已启用（不等于验证有效）',trial:'局部试用',candidate:'候选',inactive:'已停用'};
  const el=(tag,value)=>{const node=document.createElement(tag);if(value!==undefined)node.textContent=value;return node};
  const button=(label,fn)=>{const b=el('button',label);b.type='button';if(label==='分析新交互')b.id='experience-review';if(label==='保存模式')b.id='experience-options';if(label==='恢复所选版本')b.id='experience-restore';b.onclick=fn;return b};
  async function change(body){if(await perform(()=>api('/tasks/'+task.id+'/teaching/experience-manage',{expected_revision:task.teaching_evolution.revision,...body})))draw()}
  function draw(){
   const s=task?.teaching_evolution;if(!s)return;
-  dialog.replaceChildren(el('h2','教学反思与经验库'),el('p',`项目内经验 · v${s.revision} · 原话和评分均可回查；加载不代表采用或效果已验证。`));
+  dialog.replaceChildren(el('h2','项目反思记录'),el('p',`项目内经验 · v${s.revision} · 原话和评分均可回查；反思只生成候选。手动登记试用属于本项目观察，策略效果请查看「教学进化试验」。`));
   const mode=el('select');mode.id='experience-mode';mode.setAttribute('aria-label','经验工作模式');
-  for(const [value,title] of [['adaptive','参考初始教法并局部试用候选'],['observe','仅参考已启用教法，新反思不自动试用'],['off','关闭经验注入与反思']])mode.add(new Option(title,value));mode.value=s.mode;
+  for(const [value,title] of [['adaptive','参考初始教法和已手动登记的局部试用'],['observe','仅参考已启用教法，新反思不自动试用'],['off','关闭经验注入与反思']])mode.add(new Option(title,value));mode.value=s.mode;
   const autoLabel=el('label',' 自动后台反思（评价、反思各调用一次，失败可能重试） '),auto=el('input');auto.id='experience-auto';auto.type='checkbox';auto.checked=s.auto;autoLabel.className='experience-auto-option';autoLabel.prepend(auto);
   dialog.append(mode,autoLabel,button('保存模式',()=>change({action:'options',mode:mode.value,auto:auto.checked})),
    button('分析新交互',async()=>{await perform(()=>api('/tasks/'+task.id+'/teaching/experience-review',{}));draw()}),el('p',s.run.detail||'尚无反思记录'));
@@ -47,7 +47,7 @@
    for(const [key,label] of [['when','适用'],['action','动作'],['verify','验证目标'],['limits','边界'],['source','来源']])row.append(el('p',`${label}：${entry[key]}`));
    row.append(el('p',`模型支持 ${entry.helpful}／反对 ${entry.harmful}／不确定 ${entry.uncertain}；不代表因果有效。来源消息 ${(entry.evidence_ids||[]).join('、')||'初始教法'}`));
    if(entry.quotes)for(const q of entry.quotes)row.append(el('p',`消息 ${q.message_id}：“${q.quote}”`));
-   row.append(button(entry.status==='inactive'?'恢复试用':'停用',()=>change({action:'status',entry_id:entry.id,status:entry.status==='inactive'?'trial':'inactive'})));
+   row.append(button(['inactive','candidate'].includes(entry.status)?'登记局部试用':'停用',()=>change({action:'status',entry_id:entry.id,status:['inactive','candidate'].includes(entry.status)?'trial':'inactive'})));
    if(entry.status!=='active')row.append(button('设为启用（人工选择）',()=>change({action:'status',entry_id:entry.id,status:'active'})));
    dialog.append(row);
   }

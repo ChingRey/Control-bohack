@@ -5,6 +5,7 @@ import re
 from . import checkpoints, coding_workflow, knowledge, memory
 
 SOURCE_BUDGET = 6500
+MAX_FUTURE_STEPS = 3
 
 
 def compact_shared(value):
@@ -19,6 +20,15 @@ def compact_shared(value):
 def content_note(note):
     # Workflow/acceptance facts come from the backend, never from model memory.
     return not re.search(r'✓|✕|已执行|未执行|待验收|验收通过|检查通过|不会自动', note.get('text',''))
+
+def compact_scope(task):
+    scope=coding_workflow.phase_contract(task)
+    future=scope.get('future',[])
+    return {**{key:scope[key] for key in (
+        'plan_confirmed','current_index','current_title','requires_file_change',
+        'execution_status','acceptance_status','execution_mode','current_status','boundary')},
+        'future':future[:MAX_FUTURE_STEPS],
+        'future_omitted_count':max(0,len(future)-MAX_FUTURE_STEPS)}
 
 def build(task, action):
     source = task.get('files', {})
@@ -54,19 +64,21 @@ def build(task, action):
     compact_event = None
     if event:
         compact_event = {k: event[k] for k in ('checkpoint_id', 'stage_index', 'kind')}
+        compact_changes=changes[:8]
         compact_event['project_evidence'] = {
             'changes': [{'file': x['file'], 'deleted': x['file'] not in source,
                          'new_file': x.get('before_hash') is None,
                          'diff_truncated': x.get('diff_truncated', False),
                          'removed_lines': '\n'.join(line[1:] for line in x.get('diff', '').splitlines()
-                             if line.startswith('-') and not line.startswith('---'))[:500]}
-                        for x in changes],
+                             if line.startswith('-') and not line.startswith('---'))[:240]}
+                        for x in compact_changes],
+            'omitted_change_count':max(0,len(changes)-len(compact_changes)),
             'stale_for_code': evidence.get('stale_for_code', False),
             'test_status': evidence.get('test_status', 'not_run'),
-            'execution_records': evidence.get('execution_records', [])[-2:],
-            'test_records': evidence.get('test_records', [])[-2:],
-            'runtime_observations': evidence.get('runtime_observations', [])[-3:],
-            'binary_changes': evidence.get('binary_changes', [])[:10],
+            'execution_records': evidence.get('execution_records', [])[-1:],
+            'test_records': evidence.get('test_records', [])[-1:],
+            'runtime_observations': evidence.get('runtime_observations', [])[-2:],
+            'binary_changes': evidence.get('binary_changes', [])[:5],
             'notice': '执行记录和浏览器观察未经独立验证；源代码是快照，省略部分可按行读取。'}
     history = task['messages']
     eligible = [i for i,m in enumerate(history) if m.get('queue_status') not in ('queued','needs_retry')]
@@ -114,17 +126,23 @@ def build(task, action):
         limit = len(item['content']) if i == focus else 600 if i==initial else 700
         messages.append({'id': i, 'channel': item['channel'], 'role': item['role'],
                          'content': item['content'][:limit], 'truncated': len(item['content']) > limit})
+    relevant_files=[{'path':name,'line_count':len(source[name].splitlines()),
+                     'preloaded_lines':[row['line'] for row in rows]}
+                    for name,rows in selected.items() if name in source]
+    scope=compact_scope(task)
     ctx = {'action': action, 'interaction_mode': 'project_chat',
            'code_changed_since_last_reply':changed_since_last_read,
            'current_request': {'message_id':focus} if action=='message' else
                               {'instruction':'根据当前教学阶段和接续记忆继续教学；本轮检查点是作品材料，不是要求只做代码审查。历史问题不重复回答。'},
-           'development_scope': coding_workflow.phase_contract(task),
+           'development_scope': scope,
            'checkpoint_event': compact_event if review else None,
            'files': selected,
-           'project_files': {'files': [{'path': n, 'line_count': len(v.splitlines())} for n,v in list(source.items())[:100]],
-                             'total_file_count': len(source), 'omitted_file_count': max(0, len(source)-100),
+           'project_files': {'files': [{'path':n,'line_count':len(v.splitlines())} for n,v in list(source.items())[:100]],
+                             'relevant_files':relevant_files,
+                             'omitted_file_count':max(0,len(source)-100),
+                             'total_file_count': len(source),
                              'read_tool': 'read_project_file',
-                             'notice': '仅预载本轮变更附近源码。未显示不等于不存在；可按路径和行号只读补查。'},
+                             'notice': '保留紧凑文件索引，仅预载本轮相关源码；未显示不等于不存在，可按路径和行号只读补查。'},
            'code_hash': knowledge.code_hash(source),
            'messages': messages,
            'student_evidence': [{'id': m['id']} for m in messages if m['role'] == 'user'],

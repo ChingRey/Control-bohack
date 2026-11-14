@@ -66,7 +66,7 @@ class ProjectFileExecutionTests(unittest.TestCase):
             self.assertEqual(len(task['plan']),2);self.assertIn('src/main.js',b.read_project_files(task['id']))
             self.assertEqual(self.h.call(self.h.path+'/coding/messages',{'message':'继续'})[0],202)
             task=self.h.wait()
-            self.assertEqual(execute.call_count,2)
+            self.assertEqual(execute.call_count,1)  # Continue cannot rerun a stage awaiting acceptance.
             self.assertEqual(task['step'],0)  # Only a checkmark accepts the stage.
             self.assertEqual(task['coding_workflow']['checkpoints'][1]['status'],'pending')
 

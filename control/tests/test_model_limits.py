@@ -1,4 +1,4 @@
-import copy,json,time,unittest
+import copy,io,json,time,unittest
 from unittest.mock import patch
 from agents import model_limits,teaching
 import backend as b
@@ -28,6 +28,29 @@ class TimeoutSettingsTests(unittest.TestCase):
    with self.assertRaises(TimeoutError):teaching.request_model(None,budget,lambda *args:None)
   self.assertEqual(network.call_args.kwargs['timeout'],7);self.assertEqual(events[-1]['error_type'],'TimeoutError')
   self.assertEqual(events[-1]['status'],'failed');self.assertEqual(len(events),2)
+
+ def test_tls_handshake_eof_retries_before_post_body_is_sent(self):
+  import ssl
+  from urllib.error import URLError
+  class Response(io.BytesIO):
+   pass
+  calls=[];events=[];progress=[]
+  def do_handshake():raise ssl.SSLEOFError(8,'TLS peer closed during handshake')
+  def send(request,timeout):
+   calls.append(request)
+   if len(calls)==1:
+    try:do_handshake()
+    except ssl.SSLEOFError as error:raise URLError(error)
+   return Response(b'{"ok":true}')
+  budget={'attempts':0,'deadline':time.monotonic()+20,'request_timeout':5,'on_attempt':events.append}
+  with patch.object(teaching,'urlopen',side_effect=send),patch.object(teaching.time,'sleep'):
+   result=teaching.request_model(object(),budget,lambda *args:progress.append(args))
+  self.assertEqual(result,{'ok':True})
+  self.assertEqual(len(calls),2)
+  self.assertEqual(events[1]['network_stage'],'tls_handshake')
+  self.assertTrue(events[1]['retryable_before_request_send'])
+  self.assertEqual(progress[-1][0],'retrying')
+  self.assertEqual(budget['attempts'],2)
 
  def test_settings_api_persists_nonsecret_values(self):
   h=fixture.CheckpointIntegrationTests();h.setUp();self.addCleanup(h.doCleanups)

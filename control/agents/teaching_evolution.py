@@ -30,7 +30,7 @@ def state(task):
                             'helpful': 0, 'harmful': 0, 'uncertain': 0, 'evidence_ids': [],
                             'verified': False, 'history': []})
         task['teaching_evolution'] = {
-            'schema_version': 1, 'revision': 0, 'mode': 'adaptive', 'auto': True,
+            'schema_version': 1, 'revision': 0, 'mode': 'observe', 'auto': False,
             'entries': entries, 'reviews': [], 'versions': [], 'loads': [],
             'cursor': -1, 'run': {'status': 'idle'}, 'rubric_version': 'teaching-eval-v1'}
     s = task['teaching_evolution']
@@ -67,9 +67,10 @@ def select(task):
     def rank(row):
         hits = sum(tag.lower() in text.lower() for tag in row['tags'])
         return (hits, min(3, row['helpful']) - row['harmful'], row['id'])
-    active = sorted((e for e in s['entries'] if e['status'] == 'active'), key=rank, reverse=True)
+    active = sorted((e for e in s['entries'] if e['status'] == 'active' and e.get('origin') == 'seed'),
+                    key=rank, reverse=True)
     selected = active[:2]
-    trials = sorted((e for e in s['entries'] if e['status'] == 'trial'
+    trials = sorted((e for e in s['entries'] if e['status'] == 'trial' and e.get('explicit_project_trial') is True
                      and any(tag.lower() in text.lower() for tag in e['tags'])), key=rank, reverse=True)
     if s['mode'] == 'adaptive' and trials:
         selected = selected[:1] + trials[:1]
@@ -342,7 +343,7 @@ def apply(task, review, result):
             continue
         # Revisions fork a candidate; stable parents remain untouched until explicit management.
         entry = {**fields, 'id': 'exp-' + uuid.uuid4().hex[:12], 'revision': 1,
-                 'status': 'trial' if updated['mode'] == 'adaptive' else 'candidate',
+                 'status': 'candidate',
                  'origin': 'reflection', 'source': '当前项目反思，尚未证实因果效果',
                  'parent_id': target['id'] if target else None, 'helpful': 0, 'harmful': 0,
                  'uncertain': 0, 'verified': False, 'history': [], 'quotes': op['quotes'],
@@ -379,9 +380,12 @@ def manage(task, body):
         entry = next((e for e in updated['entries'] if e['id'] == body.get('entry_id')), None)
         if not entry or body.get('status') not in ('active', 'trial', 'inactive'):
             raise ValueError('经验状态操作无效')
+        if body['status'] == 'active' and entry.get('origin') == 'reflection':
+            raise ValueError('项目反思只能显式局部试用。验证教学效果请使用教学进化试验。')
         checkpoint(updated, '人工调整条目状态')
         archive_entry(entry)
         entry['status'] = body['status']
+        entry['explicit_project_trial'] = body['status'] == 'trial'
     elif action == 'restore':
         version = next((v for v in s['versions'] if v['revision'] == body.get('target_revision')), None)
         if not version:

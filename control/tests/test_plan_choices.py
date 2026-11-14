@@ -47,6 +47,7 @@ class PlanChoiceTests(unittest.TestCase):
   self.assertEqual(self.h.call(self.h.path+'/coding/reply-accept',body)[0],200)
   self.assertEqual(self.h.call(self.h.path+'/coding/reply-accept',body)[0],200)
   t=b.load(t['id']);self.assertEqual(len(t['coding_reply_acceptances']),1);self.assertEqual(t['plan'],[])
+  self.assertTrue(b.snapshot(t)['capabilities']['coding_reply_accept'])
 
  def test_generic_checkmark_cannot_bypass_plan_approval(self):
   t=b.load(self.h.task['id']);index=max(i for i,m in enumerate(t['messages']) if m.get('channel')=='coding' and m.get('role')=='assistant')

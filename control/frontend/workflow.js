@@ -12,7 +12,7 @@ $('workflow-stage-save').onclick=()=>perform(()=>api('/tasks/'+task.id+'/workflo
 function listVersions(){$('versions-list').replaceChildren();for(const version of [...(task.version_history||[])].reverse()){const row=document.createElement('p'),button=document.createElement('button');row.append(document.createTextNode(version.label+' · '+version.created_at+' '));button.textContent='恢复这个版本';button.onclick=async()=>{if(!confirm('恢复项目文件？当前代码会自动保存为版本，聊天和学习记录保留。'))return;const current=await api('/tasks/'+task.id+'/versions/current',{});const ok=await perform(()=>api('/tasks/'+task.id+'/versions/restore',{version_id:version.id,expected_hash:current.hash}));if(ok)listVersions()};row.append(button);$('versions-list').append(row)}}
 $('project-versions').onclick=()=>{if(!task)return;listVersions();$('versions-dialog').showModal()};
 $('version-save').onclick=async()=>{if(await perform(()=>api('/tasks/'+task.id+'/versions/save',{label:'手动保存 '+new Date().toLocaleString()})))listVersions()};
-$('project-diff').onclick=()=>{if(!task)return;$('project-diff-content').textContent=task.changes.slice(-10).map(change=>`${change.file}${change.deleted?'（已删除）':''}${change.binary?'（二进制）':''}\n--- 修改前\n${change.before||''}\n+++ 修改后\n${change.after||''}`).join('\n\n')||'尚无改动';$('diff-dialog').showModal()};
+$('project-diff').onclick=()=>{diffHighlightEnabled=!diffHighlightEnabled;showView('code');paintRowHighlight()};
 
 let behaviorHash=null;
 $('behavior-open').onclick=async()=>{try{behaviorHash=(await api('/tasks/'+task.id+'/versions/current',{})).hash;$('behavior-history').textContent=(task.behavior_records||[]).slice(-10).map(r=>`${r.result}: ${r.operation} → ${r.actual}（源码 ${r.hash.slice(0,8)}）`).join('\n');$('behavior-dialog').showModal()}catch(e){toast(e.message)}};

@@ -20,3 +20,14 @@ class FailureDiagnosticsTests(unittest.TestCase):
   with patch.dict(os.environ,{'CONTROL_TEACHING_REQUEST_TIMEOUT_SECONDS':'90'}):self.assertEqual(teaching.network_timeout(),90)
   with patch.dict(os.environ,{'CONTROL_TEACHING_REQUEST_TIMEOUT_SECONDS':'0'}):
    with self.assertRaises(ValueError):teaching.network_timeout()
+ def test_url_error_trace_records_only_sanitized_transport_classification(self):
+  budget={'attempts':0,'deadline':time.monotonic()+10,'request_timeout':5};events=[];budget['on_attempt']=events.append
+  error=URLError(OSError(10061,'connection refused'))
+  with patch.object(teaching,'urlopen',side_effect=error):
+   with self.assertRaises(URLError):teaching.request_model(None,budget,lambda *args:None)
+  event=events[-1]
+  self.assertEqual(event['network_stage'],'proxy_connect')
+  self.assertEqual(event['network_error_type'],'ConnectionRefusedError')
+  self.assertEqual(event['network_error_code'],10061)
+  self.assertNotIn('error',event)
+  self.assertNotIn('key',event)

@@ -85,7 +85,7 @@ def prepare(task, checkpoint_id, action, body, files, binary_files=None):
         raise ValueError('retry只能用于已保存的失败请求')
     if parent.get('resume_request_id') and not (previous and previous['action'] == 'resume'):
         raise ValueError('此检查点已最终恢复，不能再次恢复或提交修改')
-    if any(task.get(k, {}).get('status') in ('queued', 'running') for k in ('coding_run', 'teaching_run')):
+    if any(task.get(k, {}).get('status') in ('queued', 'running') for k in ('coding_run', 'verification_run')):
         raise ValueError('当前会话正在执行，不能同时修改或恢复')
     code_hash = knowledge.code_hash(files)
     asset_hash=project_files.asset_hash(binary_files or {})

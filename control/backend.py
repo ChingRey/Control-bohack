@@ -1,5 +1,7 @@
 """Local Control workbench: sample coding, configurable teaching, SQLite records."""
 import argparse
+import ipaddress
+import copy
 import re
 import json
 import mimetypes
@@ -14,16 +16,68 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
-from agents import model_limits, teaching_evolution, workflow_records, project_safety, project_delivery, student_library, project_runner, project_runtime, teaching_library, workflow, teaching_sessions, evolution_port, skill_gateway, teaching_bridge, teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor, code_refs, project_files, checkpoint_control, checkpoints as checkpoint_events
+from agents import project_titles, model_limits, teaching_evolution, workflow_records, project_safety, project_delivery, student_library, project_runner, project_runtime, teaching_library, workflow, teaching_sessions, evolution_port, skill_gateway, teaching_bridge, teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor, code_refs, project_files, checkpoint_control, checkpoints as checkpoint_events
 from agents.coding import PLAN, FILES, SampleCodingAgent
-from agents import teaching_v021
+from agents import teaching_v021, experiment_api, strategy_library, teaching_trial
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / 'data' / 'workbench'
 DATA.mkdir(parents=True, exist_ok=True)
 LOCK = threading.RLock()
 TASK_LOCKS = {}
+TEACHING_JOBS = {}
 DB = DATA / 'records.sqlite3'
+
+DEMO_STUDENT_ID = str(uuid.uuid5(uuid.NAMESPACE_URL,'control/demo-student/v1'))
+
+def demo_student(adopt=False):
+ with connection() as c:
+  try:record=student_library.read(c,DEMO_STUDENT_ID)
+  except ValueError:
+   record={'id':DEMO_STUDENT_ID,'name':'演示学生','revision':0,'rules':[],'profile':[]};student_library.write(c,record)
+  if adopt:
+   for (raw,) in c.execute('SELECT body FROM tasks').fetchall():
+    t=json.loads(raw);state=workflow_records.initialize(t)
+    if not state.get('student_id'):
+     state['student_id']=DEMO_STUDENT_ID
+     c.execute('UPDATE tasks SET body=? WHERE id=?',(json.dumps(t,ensure_ascii=False),t['id']))
+ return {'id':record['id'],'name':record['name'],'demo':True}
+
+
+def import_teaching_experience(t, body):
+ if body.get('confirmed') is not True:raise ValueError('请选择并确认引用教法')
+ target=teaching_evolution.state(t)
+ if body.get('expected_revision')!=target['revision']:raise ValueError('目标经验版本已变化，请重新选择')
+ source=load(body.get('source_project'))
+ student=t.get('workflow',{}).get('student_id')
+ if not student or source.get('workflow',{}).get('student_id')!=student or source['id']==t['id']:raise ValueError('只能引用同一学生的其他项目')
+ origin=teaching_evolution.state(source)
+ if body.get('source_revision')!=origin['revision']:raise ValueError('来源经验版本已变化，请重新选择')
+ ids=body.get('entry_ids')
+ if not isinstance(ids,list) or not ids or len(ids)>15 or len(set(ids))!=len(ids):raise ValueError('请选择1至15条教法')
+ entries=[e for e in origin['entries'] if e['id'] in ids and e.get('origin')!='seed' and e.get('status') in ('active','trial')]
+ if len(entries)!=len(ids):raise ValueError('只能引用当前有效或试用中的非初始教法')
+ additions=[e for e in entries if not any(x.get('source_project')==source['id'] and x.get('source_entry')==e['id'] and x.get('source_revision')==e['revision'] for x in target['entries'])]
+ if len(target['entries'])+len(additions)>teaching_evolution.MAX_ENTRIES:raise ValueError('经验库容量不足')
+ if not additions:return
+ teaching_evolution.checkpoint(target,'手动引用同一学生的教学经验（试用）')
+ for entry in additions:
+  imported=copy.deepcopy(entry);imported.update(id='exp-'+uuid.uuid4().hex[:12],revision=1,status='trial',verified=False,helpful=0,harmful=0,uncertain=0,history=[],evidence_ids=[],origin='personal_transfer',source_project=source['id'],source_entry=entry['id'],source_revision=entry['revision'])
+  target['entries'].append(imported)
+
+HOST_MODEL_MTIME = None
+def load_host_models():
+ global HOST_MODEL_MTIME
+ path=DATA/'host-models.json'
+ if not path.exists():return
+ stamp=path.stat().st_mtime_ns
+ if stamp==HOST_MODEL_MTIME:return
+ config=json.loads(path.read_text(encoding='utf8'))
+ teacher=config.get('teaching',{});coding=config.get('coding',{})
+ if teacher:providers.configure(teacher['provider'],teacher['api_key'],teacher['model'])
+ if coding:opencode_executor.configure(coding['api_key'],coding['model'],coding.get('region','cn'),coding['provider'])
+ HOST_MODEL_MTIME=stamp
+
 
 def task_lock(key):
  with LOCK:
@@ -38,6 +92,7 @@ def connection():
   c.execute('CREATE TABLE IF NOT EXISTS learning_versions (task_id TEXT, revision TEXT, digest TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(task_id,revision))')
   knowledge.initialize(c)
   student_library.initialize(c)
+  strategy_library.initialize(c)
   yield c
   c.commit()
  except Exception:
@@ -48,7 +103,18 @@ def connection():
 
 def save(t):
  workflow.state(t)
+ t['updated_at']=time.time()
  with connection() as c:
+  old=c.execute('SELECT body FROM tasks WHERE id=?',(t['id'],)).fetchone()
+  if old and not t['workflow'].get('student_id'):
+   old_student=json.loads(old[0]).get('workflow',{}).get('student_id')
+   if old_student:t['workflow']['student_id']=old_student
+  if old:
+   previous=json.loads(old[0])
+   if previous.get('title_mode')=='manual':
+    if t.get('_explicit_title_edit') is not True:t.update(title=previous['title'],title_mode='manual')
+  t.pop('_explicit_title_edit',None)
+  project_titles.update(t)
   s=t.get('teaching',{});course=s.get('course',{})
   collections=[('turn',s.get('turns',[]),20,'id'),('checkpoint',course.get('checkpoints',[]),40,'turn')]
   collections.extend(('observation:'+g['id'],g.get('observations',[]),20,'turn') for g in course.get('objectives',[]))
@@ -78,6 +144,7 @@ def project(tid):
  p = DATA / tid / 'project'; p.mkdir(parents=True, exist_ok=True); return p
 
 def snapshot(t):
+ t['capabilities']={'coding_reply_accept':True}
  workflow.state(t)
  workflow_records.initialize(t)
  t['version_history']=workflow.summary(t)
@@ -107,7 +174,7 @@ def snapshot(t):
  if t.get('mode')=='opencode':t['teaching_library']=teaching_library.view(t)
  t['learning_overview']={'profile':learning.profile(t),'skills':learning.readiness(t)}
  with connection() as c:t['project_knowledge']=knowledge.list_task(c,t['id'])
- t['preview_url']=f'http://127.0.0.1:{PREVIEW_PORT}/preview/{t["id"]}/index.html' if PREVIEW_PORT else f'/preview/{t["id"]}/index.html'
+ t['preview_url']=f'http://{PUBLIC_HOST}:{PREVIEW_PORT}/preview/{t["id"]}/index.html' if PREVIEW_PORT else f'/preview/{t["id"]}/index.html'
  result=dict(t);result.pop('project_versions',None);result.pop('teaching_v021',None)
  return result
 
@@ -166,6 +233,25 @@ def apply_coding_files(task, before, after, instruction, before_assets=None, aft
  task['changes'].extend(changes)
  task['binary_files']=project_files.asset_metadata(after_assets)
 
+def supersede_teaching(t, reason='已继续开发，本轮教学保留为历史，不应用到新阶段'):
+ run=t.get('teaching_run',{})
+ if run.get('status') not in ('queued','running'):return
+ with LOCK:
+  signal=TEACHING_JOBS.get(run['id'])
+  if signal:signal.set()
+ run.update(status='superseded',detail=reason,elapsed_seconds=round(time.time()-run.get('started_at',time.time()),1))
+ for checkpoint in t.get('coding_checkpoints',[]):
+  if checkpoint.get('delivery',{}).get('teaching_run_id')==run['id']:
+   checkpoint['delivery'].update(status='superseded',reason=reason)
+ if run.get('queue_request_id'):
+  row=next((m for m in t['messages'] if m.get('request_id')==run['queue_request_id']),None)
+  if row:row['queue_status']='needs_retry'
+ # Immutable operational history includes partial text; it is not a completed
+ # teaching message, mastery evidence, or a replacement for learning state.
+ with connection() as c:
+  c.execute('INSERT OR IGNORE INTO teaching_history VALUES (?,?,?,?)',(t['id'],'run',run['id'],json.dumps(run,ensure_ascii=False)))
+
+
 def start_teaching(t, action='message'):
  if t.get('teaching_run',{}).get('status') in ('queued','running'): raise ValueError('教师正在处理上一条消息')
  teaching.state(t)
@@ -174,21 +260,29 @@ def start_teaching(t, action='message'):
   checkpoint=t['coding_checkpoints'][-1]
   job['checkpoint_id']=checkpoint['checkpoint_id']
   checkpoint['delivery']={'status':'queued','teaching_run_id':job['id']}
+ signal=threading.Event()
+ with LOCK:TEACHING_JOBS[job['id']]=signal
  t['teaching_run']=job;save(t)
  baseline=task_signature(t);work=json.loads(json.dumps(t));base_count=len(t['messages'])
  def worker():
   source_files=None;source_assets=None
   def progress(stage,detail):
+   if signal.is_set():raise ValueError('本轮教学已中止')
    with task_lock(work['id']):
     fresh=load(work['id'])
-    if fresh.get('teaching_run',{}).get('id')!=job['id']: raise ValueError('本次教师任务已被替换')
+    if fresh.get('teaching_run',{}).get('id')!=job['id'] or fresh['teaching_run'].get('status') not in ('queued','running'): raise ValueError('本次教师任务已被替换')
     if stage=='request_trace':
      trace=fresh['teaching_run'].setdefault('request_trace',[])
      row=next((r for r in trace if r['attempt']==detail['attempt']),None)
      if row is None:trace.append(dict(detail))
      else:row.update(detail)
-    else:fresh['teaching_run'].update(status='running',stage=stage,detail=detail)
+    elif stage=='streaming':
+     fresh['teaching_run'].update(status='running',stage=stage,detail='正在生成回复',partial_reply=redact_message(detail))
+    else:
+     fresh['teaching_run'].update(status='running',stage=stage,detail=detail)
+     if stage=='thinking':fresh['teaching_run'].pop('partial_reply',None)
     save(fresh)
+  progress.cancelled=signal.is_set
   try:
    progress('reading','正在读取当前代码与学习记录')
    # Teaching needs a source snapshot, not UI history, runtime status and knowledge lists.
@@ -205,7 +299,7 @@ def start_teaching(t, action='message'):
   # Only the current job may update its fields; never write an old whole-task snapshot.
   with task_lock(work['id']):
    fresh=load(work['id'])
-   if fresh.get('teaching_run',{}).get('id')!=job['id']: return
+   if fresh.get('teaching_run',{}).get('id')!=job['id'] or fresh['teaching_run'].get('status') not in ('queued','running'): return
    stale=task_signature(fresh)!=baseline
    try: stale=stale or (source_files is not None and (read_project_files(work['id'])!=source_files or project_files.asset_metadata(project_files.read_assets(project(work['id'])))!=source_assets))
    except (OSError,UnicodeError): stale=True
@@ -225,6 +319,7 @@ def start_teaching(t, action='message'):
      if checkpoint['checkpoint_id']==job['checkpoint_id']:
       checkpoint['delivery'].update(status=result['status'],error=result.get('error'))
    fresh['teaching_run'].update(result,elapsed_seconds=round(time.time()-job['started_at'],1))
+   if result['status']=='completed':fresh['teaching_run'].pop('partial_reply',None)
    if result['status']=='failed': teaching.state(fresh)['last_error']=result['error']
    save(fresh)
   finish_queue_request(work['id'],'teaching_run',job['id'])
@@ -242,7 +337,11 @@ def start_teaching(t, action='message'):
    if result['status']=='completed' and es['auto'] and es['mode']!='off' and teaching.TeachingAgent().mode=='model' and teaching_evolution.pending(latest):
     try:start_experience_review(latest)
     except ValueError:pass
- threading.Thread(target=worker,daemon=True).start()
+ def run_worker():
+  try:worker()
+  finally:
+   with LOCK:TEACHING_JOBS.pop(job['id'],None)
+ threading.Thread(target=run_worker,daemon=True).start()
 
 def start_checkpoint_teaching(t):
  if t.get('teaching_v021',{}).get('library') and t.get('checkpoint_delivery')!='manual':
@@ -286,11 +385,13 @@ def message(t, channel, role, content):
 def start_coding(t, instruction, planning=False, chatting=False, checkpoint_operation=None):
  if not opencode_executor.metadata()['configured']:raise ValueError('请先连接Coding模型')
  if not opencode_executor.binary():raise ValueError('OpenCode尚未安装')
+ supersede_teaching(t)
  job={'id':str(uuid.uuid4()),'status':'running','detail':'Coding Agent正在处理当前阶段…','started_at':time.time(),'queue_request_id':t.pop('_queue_launch_id',None)}
  if checkpoint_operation is not None:
   job['checkpoint_operation']={'checkpoint_id':checkpoint_operation['root_checkpoint_id'],'request_id':checkpoint_operation['request_id']}
   job['skill_results']=checkpoint_operation['skill_results']
   checkpoint_operation.update(status='running',coding_run_id=job['id'])
+ job['routing']={'mode':'discussion' if chatting else 'planning' if planning else 'execution','completion':'reply' if chatting else 'plan_draft' if planning else 'phase_result','revision':'intent-v2'}
  t['coding_run']=job;save(t)
  work=json.loads(json.dumps(t));original,original_assets=project_files.scan(project(t['id']));signature=task_signature(t)
  with connection() as c:knowledge_context=knowledge.search(c,t['id'],instruction,knowledge.code_hash(original)) if t.get('knowledge_enabled',True) else []
@@ -347,7 +448,7 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
       coding_workflow.state(fresh)['tool_events']=result['events']
       coding_workflow.state(fresh)['status']='paused'
       fresh['coding_run'].update(status='failed',detail='未检测到实际文件变更，当前阶段未完成')
-      message(fresh,'coding','assistant','本次没有实际创建或修改文件，当前阶段仍未完成。模型的文字声明不能作为完成依据。')
+      message(fresh,'coding','assistant',result['text']);fresh['messages'][-1]['execution_status']='failed_no_changes'
       skill_gateway.record(fresh,job['id'],work['step'],packet['learning_context']['skills'],'no_changes')
       checkpoint_control.finish(fresh,job,'failed',error='no_file_changes')
       save(fresh);return
@@ -441,9 +542,12 @@ def drain_chat(tid):
  with task_lock(tid):
   try:t=load(tid)
   except ValueError:return
-  if task_busy(t):return
+  if any(t.get(k,{}).get('status') in ('queued','running') for k in ('coding_run','verification_run')):return
   row=next((m for m in t['messages'] if m.get('queue_status')=='queued'),None)
   if not row:return
+  if t.get('teaching_run',{}).get('status') in ('queued','running'):
+   if row['channel']!='coding':return
+   supersede_teaching(t)
   row['queue_status']='delivered';t['_queue_launch_id']=row['request_id'];save(t)
   try:
    if row['channel']=='teaching':start_teaching(t)
@@ -458,25 +562,26 @@ def drain_chat(tid):
 
 
 def dispatch_coding_message(t, text, request_id=None):
- # Only the structured checkmark endpoints approve. All draft feedback revises the draft.
+ intent=coding_workflow.message_intent(text)
+ discussion=intent=='discuss' and coding_workflow.discussion_requested(text)
+ if discussion:
+  start_coding(t,text,chatting=True);return
  if not t.get('plan') and t.get('plan_draft'):
-  t.pop('plan_decision',None)
-  start_coding(t,text,planning=True)
-  return
+  t.pop('plan_decision',None);start_coding(t,text,planning=True);return
  pending=coding_workflow.phase_contract(t).get('current_status')=='executed_pending_review'
+ advance=bool(re.fullmatch(r'(?:请|可以|那就|现在)?(?:继续|继续下一步|继续下一阶段|下一步|开始下一步|进入下一步)[吧。！! ]*',text.strip()))
+ if pending and advance:
+  t.pop('_queue_launch_id',None)
+  message(t,'coding','assistant','当前阶段已执行，正在等待你验收。请点击本轮回复下的✓确认通过并继续；不会重复执行当前阶段。');save(t)
+  threading.Thread(target=drain_chat,args=(t['id'],),daemon=True).start();return
  if pending and t.get('coding_checkpoints'):
   checkpoint=t['coding_checkpoints'][-1]
   if checkpoint.get('kind')=='development' and checkpoint.get('stage_index')==t['step']:
    token='chat-'+uuid.uuid5(uuid.NAMESPACE_URL,t['id']+str(request_id or uuid.uuid4())).hex
-   checkpoint_command(t,checkpoint['checkpoint_id'],'revise',{
-    'session_id':t['id'],'request_id':token,'confirmed':True,'instruction':text,
-    'expected_code_hash':knowledge.code_hash(read_project_files(t['id']))})
-   return
- intent=coding_workflow.message_intent(text)
+   checkpoint_command(t,checkpoint['checkpoint_id'],'revise',{'session_id':t['id'],'request_id':token,'confirmed':True,'instruction':text,'expected_code_hash':knowledge.code_hash(read_project_files(t['id']))});return
  needs_plan=not t.get('plan') and workflow_records.initialize(t)['mode']!='free'
  planning=needs_plan and (intent=='execute' or bool(re.search(r'做|小游戏|网站|网页|应用|计划',text)))
- if intent=='execute' and t.get('plan') and t['step']>=len(t['plan']):
-  raise ValueError('计划已全部验收，请先开始新任务')
+ if intent=='execute' and t.get('plan') and t['step']>=len(t['plan']):raise ValueError('计划已全部验收，请先开始新任务')
  start_coding(t,text,planning=planning,chatting=not planning and intent!='execute')
 
 
@@ -636,6 +741,7 @@ def checkpoint_command(t, checkpoint_id, action, body):
  operation,launch=checkpoint_control.prepare(t,checkpoint_id,action,body,read_project_files(t['id']),project_files.read_assets(project(t['id'])))
  if not launch:return 200,{'operation':operation,'task':snapshot(t)}
  if operation['target_step']>=len(t['plan']):
+  supersede_teaching(t)
   operation['status']='completed';operation['outcome']='development_finished';save(t)
   return 200,{'operation':operation,'task':snapshot(t)}
  # Configuration errors reject an uncommitted task copy, so acceptance is not lost.
@@ -655,6 +761,7 @@ def checkpoint_command(t, checkpoint_id, action, body):
 
 CODING=SampleCodingAgent(project,write_project_file)
 PREVIEW_PORT=None
+PUBLIC_HOST='127.0.0.1'
 
 def safe_preview_name(name):
  import re
@@ -686,10 +793,24 @@ class Handler(BaseHTTPRequestHandler):
  def do_GET(self):
   try:
    parts=urlparse(self.path).path.strip('/').split('/')
+   if parts in (['api','teaching','strategy-trials'],['api','teaching','strategy-trials','simulation']):
+    host=self.headers.get('Host','')
+    if host not in (f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}'):
+     return self.reply(403,{'error':'仅允许本机访问'})
+    with connection() as c:data=strategy_library.dashboard(c,'simulation' if len(parts)==4 else 'human')
+    return self.reply(200,data)
+   if len(parts)==5 and parts[:2]==['api','tasks'] and parts[3:]==['teaching','experiment']:
+    host=self.headers.get('Host','')
+    if host not in (f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}'):
+     return self.reply(403,{'error':'仅允许本机访问'})
+    with task_lock(parts[2]), connection() as c:
+     session=experiment_api.load(c,parts[2])
+     return self.reply(200,teaching_trial.view(session) if session else {})
+
    if len(parts)==4 and parts[:2]==['api','tasks'] and parts[3]=='teaching-v021':
     teaching_v021.auth(self,parts[2])
     with task_lock(parts[2]):return self.reply(200,teaching_v021.get_view(load(parts[2])))
-   if parts==['api','health']: return self.reply(200,{'coding_mode':'sample_or_opencode','coding':opencode_executor.metadata(),'teaching':teaching.TeachingAgent().metadata(),'teaching_library':teaching_library.metadata(),'storage':'sqlite','background_revision':'snapshot-v2','model_timeouts':model_limits.settings()})
+   if parts==['api','health']: return self.reply(200,{'coding_mode':'sample_or_opencode','coding':opencode_executor.metadata(),'teaching':teaching.TeachingAgent().metadata(),'teaching_library':teaching_library.metadata(),'storage':'sqlite','background_revision':'snapshot-v2','manual_simulation_enabled':os.getenv('CONTROL_ALLOW_SIMULATION')=='1','model_timeouts':model_limits.settings()})
    if len(parts)==4 and parts[:3]==['api','teaching','library']:
     data=teaching_library.catalog();card=next((c for c in data['lessons'] if c['id']==parts[3]),None)
     if card is None:return self.reply(404,{'error':'课卡不存在'})
@@ -699,7 +820,7 @@ class Handler(BaseHTTPRequestHandler):
     return self.reply(200,[{k:r[k] for k in ('id','name','revision')} for (body,) in rows for r in [json.loads(body)]])
    if parts==['api','tasks']:
     with connection() as c: rows=c.execute('SELECT body FROM tasks ORDER BY rowid DESC').fetchall()
-    return self.reply(200,[{'id':(t:=json.loads(r[0]))['id'],'title':t['title']} for r in rows])
+    return self.reply(200,[{'id':(t:=json.loads(r[0]))['id'],'title':t['title'],'student_id':t.get('workflow',{}).get('student_id'),'step':t.get('step',0),'phases':len(t.get('plan',[])),'messages':len(t.get('messages',[])),'reviews':len(t.get('teaching_evolution',{}).get('reviews',[])),'updated_at':t.get('updated_at')} for r in rows])
    if len(parts) in (4,5) and parts[:2]==['api','tasks'] and parts[3]=='checkpoints':
     with task_lock(parts[2]):
      task=load(parts[2]);events=task.get('coding_checkpoints',[])
@@ -741,7 +862,7 @@ class Handler(BaseHTTPRequestHandler):
     if not safe_preview_name(parts[2]): return self.reply(404,{'error':'文件不存在'})
     return self.reply(200,p.read_bytes(),mimetypes.guess_type(p.name)[0] or 'text/plain')
    name='index.html' if parts==[''] else '/'.join(parts)
-   if name not in ['index.html','app.js','workflow.js','evolution.js','teaching-v021.js','style.css']: return self.reply(404,{'error':'地址不存在'})
+   if name not in ['index.html','app.js','workflow.js','evolution.js','teaching-v021.js','style.css','strategy-trials.js','strategy-evolution-view.js','strategy-trials.css']: return self.reply(404,{'error':'地址不存在'})
    p=ROOT/'frontend'/name
    return self.reply(200,p.read_bytes(),(mimetypes.guess_type(name)[0] or 'text/plain')+'; charset=utf-8')
   except teaching_v021.AccessDenied as e:self.reply(403,{'error':str(e)})
@@ -750,7 +871,7 @@ class Handler(BaseHTTPRequestHandler):
   except (OSError,sqlite3.Error): self.reply(500,{'error':'读取文件或存储失败，请稍后重试'})
  def do_POST(self):
   host=self.headers.get('Host','');origin=self.headers.get('Origin')
-  if host not in (f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}'): return self.reply(403,{'error':'仅允许本机访问'})
+  if host not in (f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}',f'{PUBLIC_HOST}:{self.server.server_port}'): return self.reply(403,{'error':'仅允许本机访问'})
   if origin and origin!='http://'+host: return self.reply(403,{'error':'不允许跨站写入'})
   try:
    length=int(self.headers.get('Content-Length','0'))
@@ -762,6 +883,11 @@ class Handler(BaseHTTPRequestHandler):
    if parts==['api','teaching-v021','session']:
     return teaching_v021.login(self,body,__import__(__name__))
    with task_lock(parts[2] if len(parts)>3 and parts[:2]==['api','tasks'] else 'settings-or-create'):
+    if parts in (['api','settings','coding'],['api','settings','teaching']):
+     return self.reply(403,{'error':'模型由演示负责人统一配置，学生端不提供修改入口'})
+    if parts==['api','demo-student']:
+     if body.get('confirmed') is not True:raise ValueError('请确认共享演示身份')
+     return self.reply(200,demo_student(adopt=False))
     if parts==['api','students']:
      with connection() as c:record=student_library.create(c,body.get('name'))
      return self.reply(200,record)
@@ -777,13 +903,16 @@ class Handler(BaseHTTPRequestHandler):
      providers.configure(provider,body.get('api_key',''),body.get('model',providers.DEFAULT_MODELS.get(provider,'')))
      return self.reply(200,{'configured':True,'provider':teaching.TeachingAgent().metadata()})
     if parts==['api','tasks']:
+     benchmark=body.get('scenario')=='strategy-trial'
+     if benchmark and body.get('coding_mode')=='opencode':raise ValueError('策略试验使用固定待办教材')
      tid=str(uuid.uuid4());t=dict(id=tid,title='待办事项 · 示例教程',mode='sample',stage='created',step=0,plan=[],plan_draft=[],messages=[],changes=[],checks=[])
      teaching.state(t)
+     if body.get('student_id')==DEMO_STUDENT_ID:workflow_records.initialize(t)['student_id']=DEMO_STUDENT_ID
      delivery=body.get('checkpoint_delivery','automatic')
      if delivery not in ('automatic','manual'):raise ValueError('checkpoint_delivery必须为automatic或manual')
      t['checkpoint_delivery']=delivery
      if body.get('coding_mode')=='opencode':
-      t.update(mode='opencode',title='OpenCode · 分阶段开发（待连接模型）');coding_workflow.state(t)
+      t.update(mode='opencode',title='未命名项目',title_mode='auto');coding_workflow.state(t)
      if t['mode']!='opencode':
       for name,content in FILES.items(): (project(tid)/name).write_text(content,encoding='utf-8')
      if t['mode']=='sample':message(t,'coding','assistant','你好，先说说你想开发什么。初版使用固定待办教程，示例 Agent 不调用真实模型。')
@@ -792,16 +921,32 @@ class Handler(BaseHTTPRequestHandler):
       t['messages']=[m for m in t['messages'] if m['channel']!='teaching']
       message(t,'teaching','assistant','我能看到你与 Coding 的对话、计划和项目代码，可以直接和我讨论。')
       message(t,'coding','assistant','你好，有什么想开发的吗？我们可以先聊聊你的想法。')
-     if body.get('scenario')=='teaching':
+     if body.get('scenario')=='teaching' or benchmark:
+      before=read_project_files(tid) if benchmark else None
       t['title']='空白输入审查 · 教学预置示例';t['plan']=PLAN
       for step in range(2):
        CODING.step(t,'载入教学预置版本');t['step']+=1
       t['stage']='review'
+      if benchmark:
+       checkpoint_id=str(uuid.uuid4())
+       checkpoint=checkpoint_events.record(t,checkpoint_id,'核对待办输入的正常与空白边界','载入固定教学示例',before,read_project_files(tid),1)
+       checkpoint['delivery']['status']='skipped'
+       t['benchmark_checkpoint_id']=checkpoint_id
       message(t,'coding','assistant','已载入可运行的教学预置版本。这里的遗漏来自固定教材示例，不是模型自然生成；请先审查代码和实际操作，不必继续执行第三步。')
       message(t,'teaching','assistant','这是教学预置的审查练习。你可以先预测提交不同输入的结果，再告诉我你的观察。')
     else:
      if len(parts)<4 or parts[:2]!=['api','tasks']: return self.reply(404,{'error':'接口不存在'})
+     load_host_models()
      t=load(parts[2]); action='/'.join(parts[3:]); text=body.get('message','')
+     if action in ('teaching/experiment','teaching/experiment/submit'):
+      code_hash=knowledge.code_hash(read_project_files(t['id'])) if action=='teaching/experiment' else None
+      with connection() as c:
+       c.execute('BEGIN IMMEDIATE')
+       result=experiment_api.begin(c,t,body,code_hash) if action=='teaching/experiment' else experiment_api.submit(c,t,body)
+      return self.reply(200,result)
+     if action=='chat/send' and t.get('workflow',{}).get('student_id')==DEMO_STUDENT_ID:
+      missing=(body.get('channel')=='coding' and t.get('mode')=='opencode' and not opencode_executor.CONFIG) or (body.get('channel')=='teaching' and teaching.TeachingAgent().mode!='model')
+      if missing:return self.reply(503,{'error':'演示模型尚未就绪，请联系演示负责人；无需学生配置'})
      if len(parts)==5 and parts[3]=='teaching-v021':
       teaching_v021.auth(self,t['id'],admin=parts[4]=='allow-switch')
       code,result=teaching_v021.command(t,parts[4],body,__import__(__name__));return self.reply(code,result)
@@ -818,12 +963,16 @@ class Handler(BaseHTTPRequestHandler):
       row['queue_status']='queued';save(t);drain_chat(t['id']);return self.reply(202,snapshot(load(t['id'])))
      if t.get('verification_run',{}).get('status')=='running':raise ValueError('验证正在进行，请稍后修改；聊天仍可发送')
      if t.get('coding_run',{}).get('status') in ('queued','running'):raise ValueError('Coding正在执行，请稍等')
-     if t.get('teaching_run',{}).get('status') in ('queued','running'): raise ValueError('教师正在处理上一条消息，请稍等')
+     if t.get('teaching_run',{}).get('status') in ('queued','running') and action not in ('coding/plan-decision','coding/reply-accept','steps/run','coding/messages','coding/generate-plan'): raise ValueError('教师正在处理上一条消息，请稍等')
      if not isinstance(text,str) or len(text)>12000: raise ValueError('消息格式不正确或过长')
      observations=body.get('runtime_observations','workflow')
      if isinstance(observations,list):
       t['runtime_observations']=[{'type':x.get('type'),'message':x.get('message','')[:500],'line':x.get('line',0),'source':'browser_report_not_verified_test'} for x in observations[-20:] if isinstance(x,dict) and x.get('type') in ('ready','error') and isinstance(x.get('message'),str)]
-     if action=='teaching/experience-review':
+     if action=='project/rename':
+      project_titles.rename(t,body.get('title'));t['_explicit_title_edit']=True;save(t);return self.reply(200,snapshot(t))
+     elif action=='teaching/experience-import':
+      import_teaching_experience(t,body);save(t);return self.reply(200,snapshot(t))
+     elif action=='teaching/experience-review':
       start_experience_review(t);return self.reply(202,snapshot(t))
      elif action=='teaching/experience-manage':
       teaching_evolution.manage(t,body);save(t);return self.reply(200,snapshot(t))
@@ -912,6 +1061,7 @@ class Handler(BaseHTTPRequestHandler):
       if choice=='approve' and (not opencode_executor.metadata()['configured'] or not opencode_executor.binary()):raise ValueError('请先连接Coding模型并安装执行器')
       t['plan_decision']={'request_id':request_id,'choice':choice,'plan':list(draft)}
       if choice=='revise':
+       supersede_teaching(t,'学生正在调整计划，本轮教学保留为历史')
        message(t,'coding','user','✕ 这个计划不行，需要修改。')
        message(t,'coding','assistant','好的，先不开始。请在聊天里告诉我哪些地方需要调整。')
        save(t);return self.reply(200,snapshot(t))
@@ -1075,7 +1225,7 @@ class LocalHTTPServer(ThreadingHTTPServer):
 
 def create_preview_server(preferred_port):
  for port in [preferred_port,0]:
-  try:return LocalHTTPServer(('127.0.0.1',port),PreviewHandler)
+  try:return LocalHTTPServer((PUBLIC_HOST,port),PreviewHandler)
   except OSError:
    if port==0:raise
 
@@ -1101,17 +1251,24 @@ def recover_interrupted(t):
  return changed
 
 if __name__=='__main__':
- parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8772);args=parser.parse_args()
+ parser=argparse.ArgumentParser();parser.add_argument('--port',type=int,default=8772);parser.add_argument('--lan-host',default='');args=parser.parse_args()
+ if args.lan_host:
+  address=ipaddress.ip_address(args.lan_host)
+  if address.version!=4 or not address.is_private or address.is_unspecified or address.is_loopback:raise SystemExit('--lan-host 需要本机局域网IPv4地址')
+  PUBLIC_HOST=str(address)
  if (DATA/'model-timeouts.json').exists():
   try:model_limits.configure(json.loads((DATA/'model-timeouts.json').read_text(encoding='utf8')))
   except (ValueError,OSError):print('模型超时配置无效，使用默认值',flush=True)
- print(f'Control workbench: http://127.0.0.1:{args.port} · SAMPLE AGENTS',flush=True)
+ try:load_host_models()
+ except (ValueError,KeyError,OSError):print('主机模型配置无效，请负责人检查本机配置文件',flush=True)
+ print(f'Control workbench: http://{PUBLIC_HOST}:{args.port} · shared demo if LAN enabled',flush=True)
  with connection() as c:
   for (body,) in c.execute('SELECT body FROM tasks').fetchall():
    t=json.loads(body)
-   if recover_interrupted(t):
+   title_changed=project_titles.update(t)
+   if recover_interrupted(t) or title_changed:
     c.execute('UPDATE tasks SET body=? WHERE id=?',(json.dumps(t,ensure_ascii=False),t['id']))
- try:server=LocalHTTPServer(('127.0.0.1',args.port),Handler)
+ try:server=LocalHTTPServer((PUBLIC_HOST,args.port),Handler)
  except OSError:raise SystemExit('工作台端口已被占用，请先关闭旧后台，或使用 --port 选择其他端口。') from None
  try:preview_server=create_preview_server(args.port+1)
  except OSError as err:

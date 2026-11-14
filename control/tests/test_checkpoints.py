@@ -53,7 +53,9 @@ class CheckpointIntegrationTests(unittest.TestCase):
                 task = b.load(self.task['id'])
             coding_busy = task.get('coding_run', {}).get('status') in ('queued', 'running')
             teacher_busy = task.get('teaching_run', {}).get('status') in ('queued', 'running')
-            if not coding_busy and not teacher_busy:
+            with b.LOCK:
+                teacher_finishing = task.get('teaching_run', {}).get('status') in ('completed', 'failed') and task.get('teaching_run', {}).get('id') in b.TEACHING_JOBS
+            if not coding_busy and not teacher_busy and not teacher_finishing:
                 return task
             time.sleep(.01)
         self.fail('Background task did not finish')

@@ -10,7 +10,7 @@ root = Path(__file__).resolve().parents[1]
 target = Path(sys.argv[1]).resolve()
 files = []
 for directory in ('agents', 'frontend', 'docs', 'scripts', 'tests'):
-    files.extend(p for p in (root / directory).rglob('*') if p.is_file()
+    files.extend(p for p in (root / directory).rglob('*') if p.is_file() and not p.is_symlink() and not p.name.startswith('.env')
                  and '__pycache__' not in p.parts and p.suffix not in ('.pyc', '.pyo'))
 files.extend(root / p for p in ('backend.py', 'AGENTS.md', '.gitignore', '启动工作台.cmd'))
 tool = root / 'tools/opencode-next'
@@ -27,48 +27,38 @@ for path in files:
         if re.search(rb'\bsk-[A-Za-z0-9_-]{24,}', path.read_bytes()):
             raise SystemExit('Possible credential: ' + str(path.relative_to(root)))
 
-readme = '''# Control 双智能体交接版（2026-11-14）
+readme = '''# Control 当前融合交付版（2026-11-14）
 
-Windows 本地运行；附当前源代码和 OpenCode 1.18.34 Windows x64 执行器。
-此包不含 API Key、聊天记录、学生项目、SQLite 数据库或本机运行缓存。
+## 已融合
+- main 合并提交 0e3aa9d，包含 Decide（37e441d）、教学子计划与 turn adapter、主线教学策略、经验反思和独立后台处理。
+- 包含随后未提交的首页按钮修复：欢迎语不显示“这版可以”，后端未声明支持时不显示普通回复确认。
+- 包含教师调用链精简、指定文件预读、共享材料去重、OpenAI自然语言模式修复、后台整理请求合并和耗时记录。
+- Coding保留计划确认和阶段验收、项目内文件工具以及默认900秒执行预算；Teaching保持只读。
 
-## 启动
-1. 完整解压到可写目录，不要在压缩包内直接运行。
-2. 安装 Python 3.10+，双击“启动工作台.cmd”。常规启动无需 pip/npm。
-3. 打开 http://127.0.0.1:8772/ 。也可运行 python -X utf8 backend.py --port 8782，打开对应端口。
-4. 在页面分别保存 Coding 和 Teaching 配置：
-   - Coding：服务商“硅基流动”，模型 Qwen/Qwen3-Coder-30B-A3B-Instruct。
-   - Teaching：服务商“硅基流动”，模型 zai-org/GLM-5.3。
-   - 使用自己账户有权限的 API Key；两处可填同一个有对应权限的 Key。
-5. Key 仅保存在后台内存，后台重启后需要重填。模型调用需要联网。
+## 启动（Windows x64）
+1. 完整解压到可写目录，安装 Python 3.10+。
+2. 双击“启动工作台.cmd”，打开 http://127.0.0.1:8772/ 。
+3. 或在本目录运行 python -X utf8 backend.py --port 8782，然后访问对应端口。
+4. 附 OpenCode 1.18.34 Windows x64执行器，常规启动无需安装npm依赖。
+5. 页面分别配置Coding和Teaching的服务商、模型与自己账户的API Key；模型请求需要联网。
+6. Key只在后台进程内保存，重启后重填。请停止旧后端再启动本包，避免新前端连接旧接口。
 
-## main教学升级融合
-- 已融合origin/main@1e6b124：21张教学课卡、31条参考来源、需求/设计材料、功能循环、验证/恢复/交付及聊天队列。
-- 同时保留本地精简输入、接续记忆和计划阶段验收；说明见docs/MERGE_TEACHING_MAIN.md。
+## 接口与功能边界
+- V0.2.1 decide()与teach()已接入；独立教学接口需要显式启用，不表示普通自然聊天每轮都调用decide。
+- V0.2.1 evaluate()/evolve()仍为Mock联调；新的经验反思使用teaching/experience-review，不把Mock当真实效果。
+- 模型超时可在设置页调整，默认前台60/120秒、后台60/180秒。
+- 尚未验证真实学生的长期教学提升，教师回复仍整段显示。
+- 说明见docs/TEACHING_V021_INTEGRATION.md、docs/MERGE_EVOLUTION_MAIN.md、docs/TEACHING_LATENCY.md。
 
-## 已接通
-- 学生聊天生成计划草稿，聊天内 ✓ 批准 / ✕ 修改；执行后暂停等待检查。
-- 回复附后端生成的计划项原名和“待检查”状态；不会把本轮结束当成整份计划完成。
-- 项目目录内读写文件；需求分析阶段限制提前写实现代码。
-- Teacher 可读两边聊天、计划、源码与检查点，不能改代码。
-- Teacher 区分当前阶段和后续任务，不应把后续未实现功能当成当前遗漏。
-- Teacher 输入已去重：默认只读本轮变更附近代码，普通聊天不附整份审查；新增带消息来源和代码版本的接续记忆，同轮生成、不额外请求摘要。完整历史与只读补查保留。
-- 每阶段暂停后，Coding聊天内显示 ✓ 本阶段通过，继续下一阶段 / ✕ 需要修改；最后一阶段显示完成开发。旧文字指令仍兼容。
-- 知识候选整理和 evolve() 保留接口与 Mock；没有真实教学策略自动进化，Coding Skill 未启用。
-
-## 验证和限制
-187项测试：186通过，1项可选浏览器测试跳过；独立真实浏览器验收通过。真实硅基流动测试已验证：计数器阶段写文件、7→8→9、未提前加入 reset；Teacher 引用计划/代码并保持只读。
-模型规划与表述仍不稳定；首次计划可能未被同步器识别。普通编码阶段的语义范围主要依赖提示约束，不能保证任何任务都不越界。
-较早 docs 中有历史示例说明，以当前代码及本说明为准。测试脚本里的 8782 是开发测试端口，不影响默认8772启动。
-接口文档：docs/CHECKPOINT_HANDOFF.md、docs/POST_TEACHING_KNOWLEDGE.md、docs/FRAMEWORK_INTEGRATION.md。
-
-## 开发验证
-python -m unittest discover -s tests
-可选 Node.js：node --check frontend/app.js
-
-OpenCode 官方项目：https://github.com/anomalyco/opencode （执行器随附，不含其完整node_modules缓存）。
+## 验证与隐私
+- main合并后完整回归247项，0失败、1项可选跳过；按钮修复后6项接口测试及3种显示条件检查通过。
+- 未在本轮调用收费模型；不宣称真实模型速度提升比例。
+- 不含API Key、学生项目、聊天数据库、.git、运行日志或缓存。
+- PACKAGE_SHA256.json提供文件完整性校验。
 '''
+
 manifest = {str(p.relative_to(root)).replace('\\', '/'): hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
+manifest.update({name: hashlib.sha256(readme.encode('utf-8')).hexdigest() for name in ('README.md', '交接说明.txt')})
 target.parent.mkdir(parents=True, exist_ok=True)
 with ZipFile(target, 'w', ZIP_DEFLATED, compresslevel=6) as archive:
     for path in files:

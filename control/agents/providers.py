@@ -62,6 +62,9 @@ def request(config,messages,max_tokens,tools=None,json_mode=False):
         if config['model'].startswith(('gpt-5','gpt-6','o3','o4')):payload['reasoning']={'effort':'low'}
     else:
         payload={'model':config['model'],'messages':messages,'max_tokens':max_tokens}
+        if config['provider']=='siliconflow' and config['model'].startswith(('zai-org/GLM-5.3','Pro/zai-org/GLM-5.3')):
+            payload['enable_thinking']=True
+            payload['thinking_budget']=2048
         if tools:payload['tools']=tools
         if target.hostname=='api.deepseek.com':payload['thinking']={'type':'disabled'}
         if json_mode:payload['response_format']={'type':'json_object'}

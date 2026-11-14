@@ -123,3 +123,224 @@ body.resizing textarea{pointer-events:none}
 #teaching-tools-settings>summary{cursor:pointer;padding:6px 0}
 #teaching-tools-settings .teaching-overview{overflow:visible}
 #teaching-tools-settings .teacher-head{flex-wrap:wrap}
+
+/* File/plan sidebar and movable Coding overlay. No API changes. */
+.workspace{grid-template-columns:260px minmax(420px,1fr) 6px var(--teacher);min-width:1036px}
+.files{display:grid;grid-template-rows:auto minmax(110px,0.38fr) minmax(260px,0.62fr);min-height:0}
+.files>.label{grid-row:1}
+.files>#files{grid-row:2;min-height:0;overflow:auto;padding:10px;flex:none}
+.files>#files:empty::after{content:'尚无文件';display:block;padding:12px;color:var(--muted);font-size:12px}
+.files>#plan-panel{grid-row:3;min-height:0;max-height:none;margin:0;border-radius:0;border:0;border-top:1px solid var(--border);overflow:auto;background:transparent}
+.files .plan summary{position:sticky;top:0;z-index:1;background:#19212c;padding:14px}
+.files .plan summary span{display:block;margin:4px 0 0}
+.files .plan .plan-intro{font-size:11px;padding:10px 12px}
+.files .plan #steps{padding:0 12px}
+.files .plan .phase-progress{padding-left:0;margin-top:12px}
+.files .plan .phase-row{gap:7px}
+.files .plan .phase-row>div{min-width:0;overflow-wrap:anywhere}
+.files .plan .plan-bottom{padding:10px 12px;gap:6px}
+.files .plan .plan-bottom button{padding:6px 9px;font-size:11px}
+.center{position:relative;display:block;min-width:0;min-height:0;overflow:hidden;padding:10px}
+.center>.editor{height:100%;width:100%;min-height:0}
+.floating-coding{position:absolute;z-index:8;display:flex;flex-direction:column;min-width:200px;min-height:180px;max-width:calc(100% - 16px);max-height:calc(100% - 16px);resize:both;overflow:hidden;margin:0;border:1px solid #5d7c70;border-radius:14px;background:#15202bf5;box-shadow:0 16px 48px #0007}
+.floating-coding .agent-heading{min-height:52px;padding:9px 12px;cursor:move;touch-action:none;user-select:none;gap:6px}
+.floating-coding .agent-heading:focus-visible{outline:2px solid var(--green);outline-offset:-3px}
+.floating-coding .agent-heading small{display:none}
+.floating-coding .agent-state{font-size:10px;white-space:normal}
+.floating-coding #coding-minimize{padding:2px 9px;font-size:20px;line-height:1.2;flex:none}
+.floating-coding .messages{flex:1;min-height:0;overflow:auto;padding:14px 18px}
+.floating-coding .msg{font-size:14px;margin-bottom:16px}
+.floating-coding form{width:calc(100% - 24px);margin:0 12px 14px;padding:10px 12px;flex:none;box-shadow:none}
+.floating-coding form textarea{height:52px;min-height:38px;max-height:130px;resize:vertical}
+.floating-coding .composer-foot span{font-size:10px}
+.floating-coding.is-minimized{min-height:52px;resize:none}
+.floating-coding.is-minimized .messages,.floating-coding.is-minimized form{display:none}
+.floating-coding.is-dragging{resize:none}
+#workspace-tools-settings{margin:12px 0;border-top:1px solid var(--border);padding-top:12px}
+#workspace-tools-settings>summary{cursor:pointer;padding:6px 0}
+#workspace-tools-settings .task-strip{display:block}
+#workspace-tools-settings .knowledge-section{margin:12px 0;padding:12px 0;max-height:360px;overflow:auto}
+#workspace-tools-settings .flow-navigation{padding:10px 0}
+.sidebar-collapsed .files{grid-template-rows:auto minmax(0,1fr)}
+.sidebar-collapsed .files>#plan-panel{display:none}
+@media(max-width:1150px){.workspace{grid-template-columns:230px minmax(420px,1fr) 6px var(--teacher)}}
+
+/* Compact editor actions: labels appear only on hover or keyboard focus. */
+.editor-bar{gap:6px;padding:8px 12px;min-height:50px;overflow:visible;position:relative;z-index:9}
+.editor-bar>.editor-icon{display:inline-flex;align-items:center;justify-content:center;position:relative;width:34px;height:34px;padding:7px;border-color:transparent;background:transparent;border-radius:7px;flex:none}
+.editor-bar>.editor-icon svg{display:block;width:20px;height:20px;pointer-events:none}
+.editor-bar>.editor-icon:hover{background:#293b49;border-color:#405666}
+.editor-bar>.editor-icon.view-active{background:#294334;border-color:#648f73;color:#bde9cc}
+.editor-icon-tooltip{display:none;position:absolute;top:calc(100% + 8px);left:0;white-space:nowrap;padding:6px 9px;border:1px solid #455b6d;border-radius:6px;background:#22313f;color:#e3ecf5;font-size:12px;font-weight:400;line-height:1.4;box-shadow:0 5px 14px #0004;pointer-events:none;z-index:20}
+.editor-icon:hover>.editor-icon-tooltip,.editor-icon:focus-visible>.editor-icon-tooltip{display:block}
+.editor-icon:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+
+/* Shallow default chat, one-line composer and resize grips on every edge. */
+.floating-coding{min-height:160px;resize:none}
+.floating-coding .messages{padding:10px 14px}
+.floating-coding .agent-heading{min-height:44px;padding:6px 12px}
+.floating-coding form{display:flex;align-items:center;gap:10px;width:calc(100% - 24px);margin:0 12px 12px;padding:7px 9px}
+.floating-coding form textarea{flex:1;min-width:0;height:24px!important;min-height:24px!important;max-height:24px!important;line-height:24px;padding:0 3px;resize:none;overflow-y:auto}
+.floating-coding .composer-foot{flex:none;padding:0}
+.floating-coding .composer-foot button{min-height:38px;padding:7px 15px}
+.coding-resize-grip{position:absolute;z-index:12;touch-action:none}
+.grip-n,.grip-s{left:12px;right:12px;height:7px;cursor:ns-resize}
+.grip-n{top:0}.grip-s{bottom:0}
+.grip-e,.grip-w{top:12px;bottom:12px;width:7px;cursor:ew-resize}
+.grip-e{right:0}.grip-w{left:0}
+.grip-nw,.grip-ne,.grip-sw,.grip-se{width:13px;height:13px}
+.grip-nw{top:0;left:0;cursor:nwse-resize}.grip-ne{top:0;right:0;cursor:nesw-resize}
+.grip-sw{bottom:0;left:0;cursor:nesw-resize}.grip-se{bottom:0;right:0;cursor:nwse-resize}
+.coding-resize-grip:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
+.floating-coding.is-minimized .coding-resize-grip{display:none}
+.floating-coding.is-sizing{user-select:none}
+
+/* Minimal plan, with draggable file/plan boundary and state-colored numbers. */
+.files{grid-template-rows:auto minmax(90px,var(--file-share,38fr)) 6px minmax(180px,var(--plan-share,62fr))}
+.files>#plan-panel{grid-row:4;border-top:0}
+.sidebar-plan-split{grid-row:3;position:relative;background:#2b3947;cursor:row-resize;touch-action:none;z-index:4}
+.sidebar-plan-split:hover,.sidebar-plan-split:focus-visible{background:var(--green)}
+.sidebar-plan-split:focus-visible{outline:2px solid var(--green);outline-offset:0}
+.files #plan-panel>h2{position:sticky;top:0;z-index:1;margin:0;padding:16px 14px;font-size:17px;font-weight:600;color:#dce9f2;background:#19212c;border-bottom:1px solid var(--border)}
+.files #steps{list-style:none;margin:0;padding:10px 14px}
+.files #steps>.milestone{display:flex;align-items:flex-start;gap:10px;margin:14px 0 22px;color:#8292a4}
+.files #steps>.milestone>strong{display:flex;align-items:center;justify-content:center;flex:0 0 25px;height:25px;border-radius:50%;font-size:12px;background:#293543;color:#8292a4}
+.files #steps>.milestone>div{flex:1;min-width:0;padding-top:2px;font-size:14px;line-height:1.5}
+.files #steps>.milestone.is-done{color:#9acfb0}
+.files #steps>.milestone.is-done>strong{background:#254535;color:#9acfb0}
+.files #steps>.milestone.is-active{color:#d1ffe0}
+.files #steps>.milestone.is-active>strong{background:#315d43;color:#d1ffe0;box-shadow:0 0 0 2px #a9e8bf14}
+.files .phase-progress{list-style:none;padding:0;margin:12px 0 0}
+.files .phase-progress>.phase-row{display:flex;align-items:flex-start;gap:8px;margin:13px 0;color:#8292a4;font-size:12px;line-height:1.55}
+.files .phase-number{flex:0 0 18px;font-size:13px;font-weight:600;color:inherit;background:transparent}
+.files .phase-title{color:inherit;overflow-wrap:anywhere}
+.files .phase-row.is-done{color:#9acfb0}
+.files .phase-row.is-active,.files .phase-row.is-review{color:#d1ffe0}
+.files .phase-row.is-active .phase-number,.files .phase-row.is-review .phase-number{color:#e2ffeb;text-shadow:0 0 8px #a9e8bf3b}
+.sidebar-collapsed .sidebar-plan-split{display:none}
+
+/* Collapse to a bottom bar; override the expanded window minimum height. */
+.floating-coding.is-minimized{min-height:52px;max-height:52px;height:52px;resize:none}
+.floating-coding #coding-minimize{margin-left:auto}
+
+/* Workspace width handle and complete sidebar hiding. */
+.workspace{grid-template-columns:var(--sidebar-width,220px) minmax(420px,1fr) 6px var(--teacher)}
+.files{position:relative;overflow:visible;min-width:0}
+.files>nav,.files>#plan-panel{min-width:0;overflow:auto}
+#sidebar-width-split{position:absolute;top:0;bottom:0;right:-3px;width:6px;z-index:10;cursor:col-resize;touch-action:none;outline:none}
+#sidebar-width-split:hover,#sidebar-width-split:focus-visible{background:var(--green)}
+.sidebar-collapsed .workspace{grid-template-columns:minmax(420px,1fr) 6px var(--teacher)!important;min-width:816px}
+.sidebar-collapsed .files{display:none}
+#sidebar-toggle{display:inline-flex;align-items:center;justify-content:center;padding:6px;background:transparent;border-color:transparent;color:#b7c9d7}
+#sidebar-toggle:hover{background:#293b4d}
+
+/* Quiet chat transcript with padded, neutral user bubbles. */
+.coding .msg.user,.teaching .msg.user{display:block;width:fit-content;max-width:85%;margin:0 0 22px auto;padding:0;background:transparent;border:0;border-radius:0}
+.coding .msg.user>b,.teaching .msg.user>b{display:none}
+.coding .msg.user .message-content,.teaching .msg.user .message-content{display:block;padding:10px 16px;background:#2c3947;color:#edf1f5;border:1px solid #ffffff08;border-radius:20px;line-height:1.7;overflow-wrap:anywhere;white-space:pre-wrap}
+.coding .msg.user .message-content p,.teaching .msg.user .message-content p{margin:0;padding:0}
+.coding .msg:not(.user),.teaching .msg:not(.user){line-height:1.8;margin-bottom:24px;background:transparent;border:0;box-shadow:none}
+.coding .messages,.teaching .messages{scrollbar-width:thin;scrollbar-color:#43505e transparent}
+.coding form,.teaching form{border-radius:22px;border-color:#43505f;background:#24313e;box-shadow:0 3px 16px #0002}
+.coding form:focus-within,.teaching form:focus-within{border-color:#718294;box-shadow:0 0 0 1px #71829433}
+.coding form textarea,.teaching form textarea{background:transparent;border:0;outline:none;color:#eef2f6}
+.coding form .primary,.teaching form .primary{border-radius:18px;background:#dce8e2;border-color:#dce8e2;color:#1b2b25}
+
+/* Compact dock when chat is minimized; preserve expanded geometry. */
+.floating-coding.is-minimized{width:188px;min-width:188px;min-height:44px;max-height:44px;height:44px;border-radius:22px;box-shadow:0 4px 16px #0003}
+.floating-coding.is-minimized .agent-heading{height:42px;min-height:42px;padding:4px 10px 4px 16px;border-bottom:0;background:transparent;gap:10px}
+.floating-coding.is-minimized .agent-heading b{font-size:13px;white-space:nowrap}
+.floating-coding.is-minimized .agent-heading small,.floating-coding.is-minimized .agent-state{display:none}
+.floating-coding.is-minimized #coding-minimize{width:28px;height:28px;padding:0;border:0;border-radius:50%;background:transparent;font-size:21px}
+.floating-coding.is-minimized #coding-minimize:hover{background:#ffffff12}
+.floating-coding.is-animating{transition:width .26s cubic-bezier(.22,1,.36,1),height .26s cubic-bezier(.22,1,.36,1),top .26s cubic-bezier(.22,1,.36,1),border-radius .26s ease,box-shadow .26s ease;pointer-events:none}
+@media(prefers-reduced-motion:reduce){.floating-coding.is-animating{transition:none}}
+
+.floating-coding.is-minimized{width:164px;min-width:164px;max-width:164px}
+.floating-coding.is-minimized .agent-heading{justify-content:flex-start;gap:4px;padding:4px 8px 4px 12px}
+.floating-coding.is-minimized .agent-heading>div{flex:0 0 auto}
+.floating-coding.is-minimized #coding-minimize{margin-left:0;flex:0 0 28px}
+
+/* Continuous work surfaces separated by quiet one-pixel rules. */
+.workspace{gap:0;grid-template-columns:var(--sidebar-width,220px) minmax(420px,1fr) 1px var(--teacher)}
+.sidebar-collapsed .workspace{grid-template-columns:minmax(420px,1fr) 1px var(--teacher)!important}
+.center{padding:0;border-right:0}
+.center>.editor{border:0;border-radius:0}
+.files{border-right:1px solid #ffffff22}
+.workspace>.splitter.vertical{width:1px;background:#ffffff22;overflow:visible}
+.workspace>.splitter.vertical::after{inset:0 -4px;background:transparent;transition:background .15s}
+.workspace>.splitter.vertical:hover::after,.workspace>.splitter.vertical:focus-visible::after{background:#a7e7bf88}
+#sidebar-width-split{background:transparent}
+#sidebar-width-split:hover,#sidebar-width-split:focus-visible{background:#a7e7bf88}
+.files{grid-template-rows:auto minmax(90px,var(--file-share,38fr)) 1px minmax(180px,var(--plan-share,62fr))}
+.sidebar-plan-split{background:#ffffff22}
+.sidebar-plan-split::after{content:'';position:absolute;inset:-3px 0}
+.sidebar-plan-split:hover,.sidebar-plan-split:focus-visible{background:var(--green)}
+.floating-coding{background:#15202b;isolation:isolate}
+.floating-coding .agent-heading{position:relative;flex-shrink:0;background:#15202b}
+#sidebar-toggle{position:relative;flex:none}
+#sidebar-toggle::after{content:attr(aria-label);display:none;position:absolute;top:calc(100% + 8px);left:0;font-size:12px;font-weight:400;white-space:nowrap;background:#344252;color:#eef3f8;padding:6px 10px;border-radius:6px;z-index:50}
+#sidebar-toggle:hover::after,#sidebar-toggle:focus-visible::after{display:block}
+header{overflow:visible;position:relative;z-index:20}
+
+.floating-coding.is-minimized{position:fixed;z-index:40;max-width:164px;max-height:44px}
+
+/* Trackless scrollbars: reveal quietly while scrolling, brighten while held. */
+html body *{scrollbar-width:thin;scrollbar-color:transparent transparent}
+html body *.is-scrolling{scrollbar-color:#73829466 transparent}
+html body *.is-scroll-dragging{scrollbar-color:#bac8d6bb transparent}
+html body *::-webkit-scrollbar{width:6px;height:6px;background:transparent}
+html body *::-webkit-scrollbar-track,html body *::-webkit-scrollbar-corner{background:transparent;border:0;box-shadow:none}
+html body *::-webkit-scrollbar-button{display:none;width:0;height:0}
+html body *::-webkit-scrollbar-thumb{background:transparent;border-radius:999px;border:0}
+html body *.is-scrolling::-webkit-scrollbar-thumb{background:#73829466}
+html body *.is-scroll-dragging::-webkit-scrollbar-thumb,html body *::-webkit-scrollbar-thumb:active{background:#bac8d6bb}
+html body *{transition:scrollbar-color .2s ease}
+
+/* Both chat forms float over the whole page, without movement boundaries. */
+.floating-coding{position:fixed;z-index:40}
+
+/* Only the one-pixel rule is painted; the wider pointer target stays invisible. */
+.workspace>.teaching{padding:0;border:0;border-radius:0}
+.workspace>.teaching>.teacher-dialog{margin:0;border:0;border-radius:0}
+.workspace>.splitter.vertical::after,.workspace>.splitter.vertical:hover::after,.workspace>.splitter.vertical:focus-visible::after,.workspace>.splitter.vertical:active::after{background:transparent}
+.workspace>.splitter.vertical:hover,.workspace>.splitter.vertical:focus-visible,.workspace>.splitter.vertical:active{background:#a7e7bf;outline:0;box-shadow:none}
+#sidebar-width-split,#sidebar-width-split:hover,#sidebar-width-split:focus-visible{background:transparent}
+#sidebar-width-split::before{content:'';position:absolute;top:0;bottom:0;left:2px;width:1px;background:transparent}
+#sidebar-width-split:hover::before,#sidebar-width-split:focus-visible::before,#sidebar-width-split:active::before{background:#a7e7bf}
+
+/* Matching section headings with a compact second-row code toolbar. */
+.files>.label,.section-heading,.teaching .discussion-head{height:48px;min-height:48px;margin:0;padding:0 16px;display:flex;align-items:center;flex:none;border-bottom:1px solid var(--border);font-size:16px;font-weight:650;color:#dce6ef;line-height:1.4}
+.teaching .discussion-head b{font-size:16px;font-weight:650;color:inherit}
+.editor-bar{min-height:36px;padding:3px 12px;gap:6px}
+.editor-bar>.editor-icon{width:28px;height:28px;padding:7px;border-radius:6px}
+.editor-bar>.editor-icon svg{width:14px;height:14px}
+
+.teaching .discussion-head{flex-direction:row;justify-content:flex-start;align-items:center;text-align:left}
+#coding-reset{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:5px;border:0;border-radius:50%;background:transparent;color:#b7c9d7;margin-left:auto;flex:none}
+#coding-reset:hover{background:#ffffff12;color:#edf5fa}
+.floating-coding #coding-minimize{margin-left:0}
+.floating-coding.is-minimized{width:192px;min-width:192px;max-width:192px}
+.floating-coding.is-minimized #coding-reset{margin-left:0}
+
+.editor-bar>.editor-icon.diff-active{background:#f4728026;border-color:#f09aa766;color:#ffc2ca}
+
+#project-home{display:none;min-height:0;overflow:auto;padding:64px max(32px,calc((100vw - 1080px)/2));background:#121b26}
+body.home-open>.workspace,body.home-open>.floating-coding{display:none!important}
+body.home-open>#project-home{display:block;grid-row:2}
+#project-home h1{font-size:34px;line-height:1.4;margin:12px 0 16px;color:#e5efe9}
+#project-home>p{color:#9faebd;line-height:1.8}
+.home-eyebrow{font-size:12px;color:#9dc9ae;letter-spacing:.04em}
+.demo-identity{font-size:12px;color:#a2b1c1;margin:22px 0}
+#project-home h2{font-size:20px;margin-top:48px}
+.project-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;padding-bottom:40px}
+.project-grid article{padding:22px;border:1px solid #344252;border-radius:14px;background:#192430;min-width:0}
+.project-grid h3{font-size:17px;line-height:1.6;overflow-wrap:anywhere;margin:12px 0 22px}
+.project-grid button{font-size:13px;margin:0 8px 8px 0}
+.project-evidence{width:min(860px,92vw);max-height:85vh;overflow:auto}
+.project-evidence pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.7}
+.project-evidence details{padding:14px 0;border-top:1px solid #344252}
+
+.plan-review-gate{flex-wrap:wrap}.sidebar-plan-choices{flex-basis:100%;margin:8px 0 0 20px;display:flex;flex-wrap:wrap;gap:6px}.sidebar-plan-choices .plan-choice{font-size:12px;padding:6px 8px;text-align:left}
+
+.project-grid .project-rename{font-size:12px;padding:3px 8px;color:#a4b4c4;background:transparent;border-color:#344252;margin-top:-12px}

@@ -524,7 +524,7 @@ def _replan_subplan(subplan, evaluation):
     purpose = purposes[action]
     if misconception:
         purpose += f' 重点关注：{misconception[:240]}'
-    inserted = {'id': step_id, 'action': action, 'purpose': purpose}
+    inserted = {'id': step_id, 'action': action, 'purpose': purpose, 'status': 'pending'}
 
     revised = deepcopy(subplan)
     previous_version = revised.get('version', 1)

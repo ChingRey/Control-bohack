@@ -18,7 +18,7 @@ async function v021Refresh(){
 async function v021Action(operation,extra={}){
  const buttons=[...$('v021-dialog').querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
  try{
-  const result=await v021Request(operation,{request_id:crypto.randomUUID(),...extra});
+  const result=await v021Request(operation,{request_id:newRequestId(),...extra});
   if(result.operation)$('v021-result').textContent='恢复请求：'+result.operation.status;
   else $('v021-result').textContent=operation==='teach'?result.response.action.content+(result.response.next_recommendation==='request_evaluation'?'\n可在下方发起评价联调。':''):operation==='evaluate'?result.response.reason:operation==='evolve'?'已保存候选策略和待执行实验；未发布。':'操作已保存';
   task=await api('/tasks/'+task.id);render();await v021Refresh();pollChat();
