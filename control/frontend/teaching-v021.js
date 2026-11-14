@@ -7,9 +7,10 @@ async function v021Request(operation,body){
 async function v021Refresh(){
  const value=await v021Request('');
  const current=value.active_strategy;
+ const mode=value.implementations?.teach==='subplan'?'规则选课 · 子计划教学':value.mode;
  const decision=value.decision;
  const decisionStatus=decision?(decision.teach?'\n教学目标：'+decision.objective:'\n本轮跳过教学：'+decision.reason):'';
- $('v021-status').textContent='模式：'+value.mode+'（联调不认证能力、不解锁Skill）\n'+(value.configured?'已配置联调课程':'尚未配置')+decisionStatus+'\n当前策略：'+(current?current.id+' v'+current.version:'未分配')+'\n已执行动作：'+(value.turns?.length||0)+'；评价记录：'+(value.evaluations?.length||0);
+ $('v021-status').textContent='模式：'+mode+'（联调不认证能力、不解锁Skill）\n'+(value.configured?'已配置联调课程':'尚未配置')+decisionStatus+'\n当前策略：'+(current?current.id+' v'+current.version:'未分配')+'\n已执行动作：'+(value.turns?.length||0)+'；评价记录：'+(value.evaluations?.length||0);
  const failed=Object.entries(value.requests||{}).filter(([id,r])=>r.status==='failed');
  $('v021-retries').replaceChildren();
  for(const [id,row] of failed){const button=document.createElement('button');button.textContent='重试 '+row.operation+' · '+id;button.onclick=()=>v021Action(row.operation,{...row.body,retry:true});$('v021-retries').append(button)}
@@ -19,7 +20,7 @@ async function v021Action(operation,extra={}){
  try{
   const result=await v021Request(operation,{request_id:crypto.randomUUID(),...extra});
   if(result.operation)$('v021-result').textContent='恢复请求：'+result.operation.status;
-  else $('v021-result').textContent=operation==='teach'?result.response.action.content:operation==='evaluate'?result.response.reason:operation==='evolve'?'已保存候选策略和待执行实验；未发布。':'操作已保存';
+  else $('v021-result').textContent=operation==='teach'?result.response.action.content+(result.response.next_recommendation==='request_evaluation'?'\n可在下方发起评价联调。':''):operation==='evaluate'?result.response.reason:operation==='evolve'?'已保存候选策略和待执行实验；未发布。':'操作已保存';
   task=await api('/tasks/'+task.id);render();await v021Refresh();pollChat();
  }catch(e){$('v021-result').textContent=e.message;try{await v021Refresh()}catch{}}
  finally{buttons.forEach(b=>b.disabled=false)}

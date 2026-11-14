@@ -9,8 +9,8 @@ from __future__ import annotations
 import json
 from typing import Awaitable, Callable
 
-from contracts import DecideRequest
-from decide_service import Opportunity
+from .teaching_contract_v021.contracts import DecideRequest
+from .decide_service import Opportunity
 
 SYSTEM_PROMPT = """你是 Control 的教学机会语义复核器，不是教学执行者。
 候选集由后端根据课程版本、先修关系与项目证据硬过滤生成。

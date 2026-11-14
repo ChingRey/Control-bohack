@@ -195,7 +195,8 @@ def build_request(task, operation, rid, body, backend):
         request.update(context=freeze(task,backend),catalog=lib['catalog'],content_policy=lib['content_policy']);return request
     decision,context=current(task,backend)
     if operation=='teach':
-        past=history(s,decision['decision_id']);active=s.get('active_strategy');last=past['recent_turns'][-1] if past['recent_turns'] else None
+        past=history(s,decision['decision_id']);active=s.get('active_strategy')
+        reply=next((turn['student_reply'] for turn in reversed(past['recent_turns']) if turn.get('student_reply')),None)
         selected = set(decision['knowledge_point_ids'])
         packages = [p for p in lib['knowledge_packages'] if p['knowledge_point_id'] in selected]
         if ('edge-cases' in selected and lib.get('approval', {}).get('status') == 'approved_for_mock_integration_only'
@@ -208,7 +209,7 @@ def build_request(task, operation, rid, body, backend):
             strategy_candidates=[p for p in lib['strategies'] if decision['capability_id'] in p['capability_ids']],
             active_strategy=active,allow_strategy_switch=bool(grant and active),teaching_history=past,
             knowledge_packages=packages,
-            last_student_message=last.get('student_reply') if last else None,
+            last_student_message=reply,
             latest_evaluation_id=past['recent_evaluations'][-1]['evaluation_id'] if past['recent_evaluations'] else None)
     elif operation=='evaluate':
         turn=next((t for t in reversed(s['turns']) if t['decision_id']==decision['decision_id']),None)
@@ -236,10 +237,13 @@ def assert_request_current(task,request,backend):
             raise ValueError('source changed; stale contract result or retry rejected')
 
 
-async def invoke(operation, request):
+async def invoke(operation, request, *, planner_state=None):
     obj=validator.validate(operation+'_request',request)
     before=canonical(obj.model_dump(mode='json'))
-    response=await asyncio.wait_for(getattr(SERVICE_FACTORY(),operation)(obj),timeout=120)
+    service=SERVICE_FACTORY()
+    if planner_state is not None and isinstance(service, DecideTeachingService):
+        service.planner_state=planner_state
+    response=await asyncio.wait_for(getattr(service,operation)(obj),timeout=120)
     if canonical(obj.model_dump(mode='json'))!=before:raise ValueError('service mutated a read-only request')
     data=response.model_dump(mode='json')
     validator.validate(operation+'_response',data,request)
@@ -263,6 +267,8 @@ def apply_response(task, operation, request, response, backend):
             if g['decision_id']==response['decision_id'] and not g.get('consumed'):g['consumed']=request['request_id']
         backend.message(task,'teaching','assistant',response['action']['content'])
         task['messages'][-1].update(engine_version='0.2.1',engine_mode=SERVICE_MODE,turn_id=response['turn_id'])
+        if SERVICE_FACTORY is DecideTeachingService:
+            task['messages'][-1]['teaching_source']='teaching_methods'
     elif operation=='evaluate':
         if any(e['response']['evaluation_id']==response['evaluation_id'] for e in s['evaluations']):raise ValueError('duplicate evaluation_id')
         s['evaluations'].append({'request_id':request['request_id'],'response':response,'rubric':request['rubric'],'mode':SERVICE_MODE,'applied_mastery':False})
@@ -326,7 +332,7 @@ def command(task, operation, body, backend):
         except Exception:
             fresh=backend.load(task['id']);state(fresh)['requests'][rid].update(status='failed',error='resume failed; explicit retry required')
             backend.save(fresh);raise
-    if operation!='configure' and not s.get('library'):raise ValueError('configure mock integration first')
+    if operation!='configure' and not s.get('library'):raise ValueError('请先配置联调课程。')
     entry={'operation':operation,'fingerprint':fingerprint,'status':'running','body':copy.deepcopy(body),'mode':SERVICE_MODE}
     s['requests'][rid]=entry;backend.save(task)
     try:
@@ -355,7 +361,17 @@ def command(task, operation, body, backend):
             ws['requests'][rid]['contract_request']=copy.deepcopy(request)
             backend.save(work)
             assert_request_current(work,request,backend)
-            response=asyncio.run(invoke(operation,request))
+            if operation=='teach':
+                active=ws.get('active_decision')
+                if SERVICE_FACTORY is DecideTeachingService and request['decision']['decision_id'].startswith('mock-decision-'):
+                    raise ValueError('请重新选择教学目标，生成当前检查点的规则决策。')
+                turn_count=sum(turn['decision_id']==active for turn in ws['turns'])
+                if request['decision']['decision_id']!=active or request['turn_index']!=turn_count:
+                    raise ValueError('教学决策或回合已更新，请发起新的教学请求。')
+                planner_state=ws.setdefault('planner',{})
+            else:
+                planner_state=None
+            response=asyncio.run(invoke(operation,request,planner_state=planner_state))
             assert_request_current(work,request,backend)
             apply_response(work,operation,request,response,backend)
         receipt={'schema_version':'0.2.1','mode':SERVICE_MODE,'applied_mastery':False,'skill_unlocks':[], 'response':response}
@@ -370,8 +386,10 @@ def command(task, operation, body, backend):
 
 def get_view(task):
     s=task.get('teaching_v021')
-    if not s:return {'schema_version':'0.2.1','configured':False,'mode':SERVICE_MODE}
-    return {'schema_version':'0.2.1','configured':bool(s.get('library')),'mode':s['mode'],
+    implementations = ({'decide':'rules','teach':'subplan','evaluate':'mock','evolve':'mock'}
+                       if SERVICE_FACTORY is DecideTeachingService else {})
+    if not s:return {'schema_version':'0.2.1','configured':False,'mode':SERVICE_MODE,'implementations':implementations}
+    return {'schema_version':'0.2.1','configured':bool(s.get('library')),'mode':s['mode'],'implementations':implementations,
         'active_decision':s.get('active_decision'),'active_strategy':s.get('active_strategy'),
         'decision':s['decisions'].get(s.get('active_decision')),
         'assignments':s['assignments'],'turns':s['turns'],'evaluations':s['evaluations'],'proposals':s['proposals'],
