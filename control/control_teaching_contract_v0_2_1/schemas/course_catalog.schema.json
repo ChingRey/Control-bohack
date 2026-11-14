@@ -1,0 +1,253 @@
+{
+  "$defs": {
+    "Capability": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "behaviors": {
+          "items": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Behaviors",
+          "type": "array"
+        },
+        "prerequisite_capability_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Prerequisite Capability Ids",
+          "type": "array"
+        },
+        "knowledge_point_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Knowledge Point Ids",
+          "type": "array"
+        },
+        "rubric_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Rubric Id",
+          "type": "string"
+        },
+        "skill_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Skill Id"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "behaviors",
+        "knowledge_point_ids",
+        "rubric_id"
+      ],
+      "title": "Capability",
+      "type": "object"
+    },
+    "Criterion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "max_score": {
+          "exclusiveMinimum": 0,
+          "title": "Max Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "max_score"
+      ],
+      "title": "Criterion",
+      "type": "object"
+    },
+    "KnowledgePoint": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "capability_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "prerequisites": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Prerequisites",
+          "type": "array"
+        },
+        "project_stages": {
+          "items": {
+            "$ref": "#/$defs/Stage"
+          },
+          "minItems": 1,
+          "title": "Project Stages",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "capability_id",
+        "title",
+        "project_stages"
+      ],
+      "title": "KnowledgePoint",
+      "type": "object"
+    },
+    "Rubric": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "minimum": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "capability_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Capability Id",
+          "type": "string"
+        },
+        "criteria": {
+          "items": {
+            "$ref": "#/$defs/Criterion"
+          },
+          "minItems": 1,
+          "title": "Criteria",
+          "type": "array"
+        },
+        "pass_score": {
+          "minimum": 0,
+          "title": "Pass Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "capability_id",
+        "criteria",
+        "pass_score"
+      ],
+      "title": "Rubric",
+      "type": "object"
+    },
+    "Stage": {
+      "enum": [
+        "planning",
+        "implementation",
+        "debugging",
+        "verification"
+      ],
+      "title": "Stage",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    },
+    "capabilities": {
+      "items": {
+        "$ref": "#/$defs/Capability"
+      },
+      "minItems": 1,
+      "title": "Capabilities",
+      "type": "array"
+    },
+    "knowledge_points": {
+      "items": {
+        "$ref": "#/$defs/KnowledgePoint"
+      },
+      "minItems": 1,
+      "title": "Knowledge Points",
+      "type": "array"
+    },
+    "rubrics": {
+      "items": {
+        "$ref": "#/$defs/Rubric"
+      },
+      "minItems": 1,
+      "title": "Rubrics",
+      "type": "array"
+    }
+  },
+  "required": [
+    "version",
+    "capabilities",
+    "knowledge_points",
+    "rubrics"
+  ],
+  "title": "CourseCatalog",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://control.example.invalid/contracts/v0.2.1/course_catalog.schema.json"
+}

@@ -1,0 +1,140 @@
+{
+  "schema_version": "0.2.1",
+  "request_id": "req-001",
+  "context": {
+    "context_id": "ctx-001",
+    "session_id": "sess-001",
+    "checkpoint_id": "cp-001",
+    "project": {
+      "stage": "planning",
+      "task_id": "task-001",
+      "goal": "制作一个可以跳跃躲避障碍的小游戏",
+      "description": null,
+      "evidence_refs": [
+        "plan-001"
+      ]
+    },
+    "learner": {
+      "student_id": "learner-01",
+      "knowledge_states": [
+        {
+          "knowledge_point_id": "acceptance-criteria",
+          "level": "needs_support",
+          "evidence_refs": [
+            "eval-001"
+          ]
+        }
+      ],
+      "prior_help_count": 2
+    },
+    "course": {
+      "catalog_version": "1",
+      "candidate_capability_ids": [
+        "requirements"
+      ],
+      "target_capability_ids": [
+        "requirements"
+      ],
+      "completed_capability_ids": []
+    },
+    "history": {
+      "recent_decision_ids": [],
+      "recent_evaluation_ids": []
+    },
+    "evidence": [
+      {
+        "id": "plan-001",
+        "source": "project",
+        "kind": "plan",
+        "summary": "开发计划包含跳跃和障碍生成，但没有验收说明",
+        "content": "1. 实现跳跃；2. 生成障碍；3. 完成游戏",
+        "artifact_ref": null
+      },
+      {
+        "id": "eval-001",
+        "source": "assessment",
+        "kind": "evaluation",
+        "summary": "此前回答未说明如何检验功能是否符合需求",
+        "content": null,
+        "artifact_ref": null
+      }
+    ]
+  },
+  "catalog": {
+    "version": "1",
+    "capabilities": [
+      {
+        "id": "requirements",
+        "title": "需求与边界判断",
+        "behaviors": [
+          "说清目标用户和功能",
+          "补充边界条件",
+          "提出可验证的验收条件"
+        ],
+        "prerequisite_capability_ids": [],
+        "knowledge_point_ids": [
+          "acceptance-criteria",
+          "edge-cases"
+        ],
+        "rubric_id": "requirements",
+        "skill_id": "skill-requirements-review"
+      }
+    ],
+    "knowledge_points": [
+      {
+        "id": "acceptance-criteria",
+        "capability_id": "requirements",
+        "title": "验收条件",
+        "prerequisites": [],
+        "project_stages": [
+          "planning",
+          "verification"
+        ]
+      },
+      {
+        "id": "edge-cases",
+        "capability_id": "requirements",
+        "title": "边界情形",
+        "prerequisites": [],
+        "project_stages": [
+          "planning",
+          "verification"
+        ]
+      }
+    ],
+    "rubrics": [
+      {
+        "id": "requirements",
+        "version": 1,
+        "capability_id": "requirements",
+        "criteria": [
+          {
+            "id": "identify-boundary",
+            "description": "能提出至少一个有意义的边界情况",
+            "max_score": 2.0
+          },
+          {
+            "id": "define-acceptance",
+            "description": "能明确期望结果与验收方式",
+            "max_score": 2.0
+          }
+        ],
+        "pass_score": 3.0
+      }
+    ]
+  },
+  "content_policy": {
+    "type": "content_policy",
+    "id": "default-content",
+    "version": 1,
+    "rules": [
+      {
+        "when": "学生缺少验收条件概念且当前有计划可审查",
+        "action": "优先教授验收标准"
+      }
+    ],
+    "stop_conditions": [
+      "缺少可靠证据则跳过教学"
+    ]
+  }
+}

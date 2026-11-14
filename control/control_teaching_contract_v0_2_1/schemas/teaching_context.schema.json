@@ -1,0 +1,327 @@
+{
+  "$defs": {
+    "CourseSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "catalog_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Catalog Version",
+          "type": "string"
+        },
+        "candidate_capability_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 0,
+          "title": "Candidate Capability Ids",
+          "type": "array"
+        },
+        "target_capability_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Target Capability Ids",
+          "type": "array"
+        },
+        "completed_capability_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Completed Capability Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "catalog_version",
+        "candidate_capability_ids"
+      ],
+      "title": "CourseSnapshot",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "project",
+            "learner",
+            "assessment",
+            "interaction"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "plan",
+            "code_diff",
+            "runtime",
+            "test",
+            "student_message",
+            "evaluation",
+            "other"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "content": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Content"
+        },
+        "artifact_ref": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Artifact Ref"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "kind",
+        "summary"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "HistorySnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "recent_decision_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Recent Decision Ids",
+          "type": "array"
+        },
+        "recent_evaluation_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Recent Evaluation Ids",
+          "type": "array"
+        }
+      },
+      "title": "HistorySnapshot",
+      "type": "object"
+    },
+    "KnowledgeState": {
+      "additionalProperties": false,
+      "properties": {
+        "knowledge_point_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Knowledge Point Id",
+          "type": "string"
+        },
+        "level": {
+          "$ref": "#/$defs/Mastery"
+        },
+        "evidence_refs": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "knowledge_point_id",
+        "level"
+      ],
+      "title": "KnowledgeState",
+      "type": "object"
+    },
+    "LearnerSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "student_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Student Id",
+          "type": "string"
+        },
+        "knowledge_states": {
+          "items": {
+            "$ref": "#/$defs/KnowledgeState"
+          },
+          "title": "Knowledge States",
+          "type": "array"
+        },
+        "prior_help_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Prior Help Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "student_id"
+      ],
+      "title": "LearnerSnapshot",
+      "type": "object"
+    },
+    "Mastery": {
+      "enum": [
+        "unassessed",
+        "needs_support",
+        "guided",
+        "independent",
+        "transfer_verified"
+      ],
+      "title": "Mastery",
+      "type": "string"
+    },
+    "ProjectSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "stage": {
+          "$ref": "#/$defs/Stage"
+        },
+        "task_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Task Id",
+          "type": "string"
+        },
+        "goal": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Goal",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "evidence_refs": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "stage",
+        "task_id",
+        "goal"
+      ],
+      "title": "ProjectSnapshot",
+      "type": "object"
+    },
+    "Stage": {
+      "enum": [
+        "planning",
+        "implementation",
+        "debugging",
+        "verification"
+      ],
+      "title": "Stage",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "context_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Context Id",
+      "type": "string"
+    },
+    "session_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "checkpoint_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Checkpoint Id",
+      "type": "string"
+    },
+    "project": {
+      "$ref": "#/$defs/ProjectSnapshot"
+    },
+    "learner": {
+      "$ref": "#/$defs/LearnerSnapshot"
+    },
+    "course": {
+      "$ref": "#/$defs/CourseSnapshot"
+    },
+    "history": {
+      "$ref": "#/$defs/HistorySnapshot"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/Evidence"
+      },
+      "title": "Evidence",
+      "type": "array"
+    }
+  },
+  "required": [
+    "context_id",
+    "session_id",
+    "checkpoint_id",
+    "project",
+    "learner",
+    "course"
+  ],
+  "title": "TeachingContext",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://control.example.invalid/contracts/v0.2.1/teaching_context.schema.json"
+}

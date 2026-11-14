@@ -1,0 +1,189 @@
+{
+  "$defs": {
+    "Mastery": {
+      "enum": [
+        "unassessed",
+        "needs_support",
+        "guided",
+        "independent",
+        "transfer_verified"
+      ],
+      "title": "Mastery",
+      "type": "string"
+    },
+    "ScoredCriterion": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Criterion Id",
+          "type": "string"
+        },
+        "score": {
+          "minimum": 0,
+          "title": "Score",
+          "type": "number"
+        },
+        "evidence_refs": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "reason": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "criterion_id",
+        "score",
+        "evidence_refs",
+        "reason"
+      ],
+      "title": "ScoredCriterion",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.2.1",
+      "default": "0.2.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Request Id",
+      "type": "string"
+    },
+    "evaluation_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Evaluation Id",
+      "type": "string"
+    },
+    "decision_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Decision Id",
+      "type": "string"
+    },
+    "turn_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Turn Id",
+      "type": "string"
+    },
+    "assessment_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Assessment Id",
+      "type": "string"
+    },
+    "assessment_mode": {
+      "enum": [
+        "formative",
+        "independent_transfer"
+      ],
+      "title": "Assessment Mode",
+      "type": "string"
+    },
+    "rubric_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Rubric Id",
+      "type": "string"
+    },
+    "rubric_version": {
+      "minimum": 1,
+      "title": "Rubric Version",
+      "type": "integer"
+    },
+    "criteria": {
+      "items": {
+        "$ref": "#/$defs/ScoredCriterion"
+      },
+      "minItems": 1,
+      "title": "Criteria",
+      "type": "array"
+    },
+    "reason": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "knowledge_gaps": {
+      "items": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Knowledge Gaps",
+      "type": "array"
+    },
+    "confidence": {
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "title": "Confidence",
+      "type": "string"
+    },
+    "proposed_mastery_level": {
+      "$ref": "#/$defs/Mastery"
+    },
+    "next_recommendation": {
+      "enum": [
+        "continue_teaching",
+        "begin_transfer",
+        "finish_lesson",
+        "needs_review"
+      ],
+      "title": "Next Recommendation",
+      "type": "string"
+    },
+    "suggested_pass": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Suggested Pass"
+    }
+  },
+  "required": [
+    "request_id",
+    "evaluation_id",
+    "decision_id",
+    "turn_id",
+    "assessment_id",
+    "assessment_mode",
+    "rubric_id",
+    "rubric_version",
+    "criteria",
+    "reason",
+    "confidence",
+    "proposed_mastery_level",
+    "next_recommendation"
+  ],
+  "title": "EvaluationResult",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://control.example.invalid/contracts/v0.2.1/evaluate_response.schema.json"
+}

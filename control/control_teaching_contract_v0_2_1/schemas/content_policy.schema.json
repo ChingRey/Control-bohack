@@ -1,0 +1,73 @@
+{
+  "$defs": {
+    "Rule": {
+      "additionalProperties": false,
+      "properties": {
+        "when": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "When",
+          "type": "string"
+        },
+        "action": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Action",
+          "type": "string"
+        }
+      },
+      "required": [
+        "when",
+        "action"
+      ],
+      "title": "Rule",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "content_policy",
+      "default": "content_policy",
+      "title": "Type",
+      "type": "string"
+    },
+    "id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "version": {
+      "minimum": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "rules": {
+      "items": {
+        "$ref": "#/$defs/Rule"
+      },
+      "minItems": 1,
+      "title": "Rules",
+      "type": "array"
+    },
+    "stop_conditions": {
+      "items": {
+        "maxLength": 4000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Stop Conditions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "rules"
+  ],
+  "title": "ContentPolicy",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://control.example.invalid/contracts/v0.2.1/content_policy.schema.json"
+}

@@ -1,0 +1,63 @@
+{
+  "version": "1",
+  "capabilities": [
+    {
+      "id": "requirements",
+      "title": "需求与边界判断",
+      "behaviors": [
+        "说清目标用户和功能",
+        "补充边界条件",
+        "提出可验证的验收条件"
+      ],
+      "prerequisite_capability_ids": [],
+      "knowledge_point_ids": [
+        "acceptance-criteria",
+        "edge-cases"
+      ],
+      "rubric_id": "requirements",
+      "skill_id": "skill-requirements-review"
+    }
+  ],
+  "knowledge_points": [
+    {
+      "id": "acceptance-criteria",
+      "capability_id": "requirements",
+      "title": "验收条件",
+      "prerequisites": [],
+      "project_stages": [
+        "planning",
+        "verification"
+      ]
+    },
+    {
+      "id": "edge-cases",
+      "capability_id": "requirements",
+      "title": "边界情形",
+      "prerequisites": [],
+      "project_stages": [
+        "planning",
+        "verification"
+      ]
+    }
+  ],
+  "rubrics": [
+    {
+      "id": "requirements",
+      "version": 1,
+      "capability_id": "requirements",
+      "criteria": [
+        {
+          "id": "identify-boundary",
+          "description": "能提出至少一个有意义的边界情况",
+          "max_score": 2.0
+        },
+        {
+          "id": "define-acceptance",
+          "description": "能明确期望结果与验收方式",
+          "max_score": 2.0
+        }
+      ],
+      "pass_score": 3.0
+    }
+  ]
+}
