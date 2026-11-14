@@ -525,3 +525,10 @@ function phaseChoiceNode(){
  const release=()=>{if(!held)return;const element=held;held=null;element.classList.remove('is-scroll-dragging');reveal(element)};
  window.addEventListener('pointerup',release,true);window.addEventListener('pointercancel',release,true);window.addEventListener('blur',release);
 })();
+
+// Connect the teaching-trial panel to the workbench project lifecycle.
+window.canSwitchControlProject=()=>!busy&&!hasCodeChanges()&&![task?.coding_run?.status,task?.teaching_run?.status].some(status=>['queued','running'].includes(status));
+window.addEventListener('control:open-teaching-example',event=>{
+ const id=event.detail?.id;
+ if(id)enterProject(id);
+});
