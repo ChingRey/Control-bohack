@@ -1,5 +1,6 @@
 """Provider-specific wire formats. Secrets stay in process memory, never metadata."""
 import copy
+from . import project_safety
 import json
 import os
 import re
@@ -46,6 +47,7 @@ def response_input(messages):
     return inputs
 
 def request(config,messages,max_tokens,tools=None,json_mode=False):
+    messages=project_safety.scrub(messages)
     endpoint=config['endpoint'];target=urlparse(endpoint)
     if not config['model'] or not target.hostname or (target.scheme!='https' and not(target.scheme=='http' and target.hostname in ('localhost','127.0.0.1'))):raise ValueError('模型地址或名称未正确配置')
     if target.hostname in ('api.openai.com','api.deepseek.com') and not config['key']:raise ValueError('请先配置所选服务商的API Key')

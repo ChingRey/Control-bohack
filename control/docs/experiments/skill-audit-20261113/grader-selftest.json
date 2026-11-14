@@ -1,0 +1,126 @@
+{
+  "checks": 8,
+  "passed": 8,
+  "rows": [
+    {
+      "case": "money",
+      "negative_control": false,
+      "returncode": 0,
+      "result": {
+        "kind": "money",
+        "checks": 24,
+        "passed": 24,
+        "success": true,
+        "errors": []
+      }
+    },
+    {
+      "case": "money",
+      "negative_control": true,
+      "returncode": 0,
+      "result": {
+        "kind": "money",
+        "checks": 24,
+        "passed": 16,
+        "success": false,
+        "errors": [
+          "missing total",
+          "unrelated export changed",
+          "total is not defined",
+          "total is not defined",
+          "total is not defined",
+          "total is not defined",
+          "total is not defined",
+          "total is not defined"
+        ]
+      }
+    },
+    {
+      "case": "store",
+      "negative_control": false,
+      "returncode": 0,
+      "result": {
+        "kind": "store",
+        "checks": 6,
+        "passed": 6,
+        "success": true,
+        "errors": []
+      }
+    },
+    {
+      "case": "store",
+      "negative_control": true,
+      "returncode": 0,
+      "result": {
+        "kind": "store",
+        "checks": 6,
+        "passed": 0,
+        "success": false,
+        "errors": [
+          "missing createStore",
+          "createStore is not defined",
+          "createStore is not defined",
+          "createStore is not defined",
+          "createStore is not defined",
+          "createStore is not defined"
+        ]
+      }
+    },
+    {
+      "case": "counter",
+      "negative_control": false,
+      "returncode": 0,
+      "result": {
+        "kind": "counter",
+        "checks": 10,
+        "passed": 10,
+        "success": true,
+        "errors": []
+      }
+    },
+    {
+      "case": "counter",
+      "negative_control": true,
+      "returncode": 0,
+      "result": {
+        "kind": "counter",
+        "checks": 10,
+        "passed": 7,
+        "success": false,
+        "errors": [
+          "stored count not restored",
+          "increment failed",
+          "reset failed"
+        ]
+      }
+    },
+    {
+      "case": "plan",
+      "negative_control": false,
+      "returncode": 0,
+      "result": {
+        "kind": "plan",
+        "checks": 12,
+        "passed": 12,
+        "success": true,
+        "errors": []
+      }
+    },
+    {
+      "case": "plan",
+      "negative_control": true,
+      "returncode": 0,
+      "result": {
+        "kind": "plan",
+        "checks": 3,
+        "passed": 0,
+        "success": false,
+        "errors": [
+          "missing goal",
+          "step count outside 2..8",
+          "Cannot read properties of undefined (reading 'includes')"
+        ]
+      }
+    }
+  ]
+}

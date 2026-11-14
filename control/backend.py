@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
-from agents import teaching_sessions, evolution_port, skill_gateway, teaching_bridge, teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor, code_refs, project_files, checkpoint_control, checkpoints as checkpoint_events
+from agents import workflow_records, project_safety, project_delivery, student_library, project_runner, project_runtime, workflow, teaching_sessions, evolution_port, skill_gateway, teaching_bridge, teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor, code_refs, project_files, checkpoint_control, checkpoints as checkpoint_events
 from agents.coding import PLAN, FILES, SampleCodingAgent
 
 ROOT = Path(__file__).resolve().parent
@@ -36,6 +36,7 @@ def connection():
   c.execute('CREATE TABLE IF NOT EXISTS teaching_history (task_id TEXT, kind TEXT, record_id TEXT, body TEXT NOT NULL, PRIMARY KEY(task_id,kind,record_id))')
   c.execute('CREATE TABLE IF NOT EXISTS learning_versions (task_id TEXT, revision TEXT, digest TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(task_id,revision))')
   knowledge.initialize(c)
+  student_library.initialize(c)
   yield c
   c.commit()
  except Exception:
@@ -45,6 +46,7 @@ def connection():
   c.close()
 
 def save(t):
+ workflow.state(t)
  with connection() as c:
   s=t.get('teaching',{});course=s.get('course',{})
   collections=[('turn',s.get('turns',[]),20,'id'),('checkpoint',course.get('checkpoints',[]),40,'turn')]
@@ -75,8 +77,15 @@ def project(tid):
  p = DATA / tid / 'project'; p.mkdir(parents=True, exist_ok=True); return p
 
 def snapshot(t):
+ workflow.state(t)
+ workflow_records.initialize(t)
+ t['version_history']=workflow.summary(t)
  t['files'],assets = project_files.scan(project(t['id']))
  t['binary_files']=project_files.asset_metadata(assets)
+ t['safety_report']=project_safety.scan(t['files'])
+ t['project_hash']=workflow.digest(t['files'],assets)
+ t['runtime_process']=project_runtime.status(t['id'])
+ t['runtime_process']['current']=t['runtime_process'].get('hash')==t['project_hash']
  t['file_hashes']={name:code_refs.digest(source) for name,source in t['files'].items()}
  if t.get('mode')=='opencode':
   coding_workflow.state(t)
@@ -90,11 +99,14 @@ def snapshot(t):
  t['learning_overview']={'profile':learning.profile(t),'skills':learning.readiness(t)}
  with connection() as c:t['project_knowledge']=knowledge.list_task(c,t['id'])
  t['preview_url']=f'http://127.0.0.1:{PREVIEW_PORT}/preview/{t["id"]}/index.html' if PREVIEW_PORT else f'/preview/{t["id"]}/index.html'
- return t
+ result=dict(t);result.pop('project_versions',None)
+ return result
 
 def task_signature(t):
- fields=('messages','changes','plan','plan_draft','step','teaching','checks','runtime_observations')
- return json.dumps({key:t.get(key) for key in fields},sort_keys=True,ensure_ascii=False)
+ fields=('messages','changes','plan','plan_draft','step','teaching','checks','runtime_observations','workflow')
+ values={key:t.get(key) for key in fields}
+ values['messages']=[m for m in t.get('messages',[]) if m.get('queue_status') not in ('queued','needs_retry')]
+ return json.dumps(values,sort_keys=True,ensure_ascii=False)
 
 def read_project_files(tid):
  return project_files.read(project(tid))
@@ -117,6 +129,7 @@ def apply_coding_files(task, before, after, instruction, before_assets=None, aft
  before_assets=before_assets or {};after_assets=after_assets or {}
  old_bytes={**{n:v.encode('utf-8') for n,v in before.items()},**{n:project_files.decode(v) for n,v in before_assets.items()}}
  new_bytes={**{n:v.encode('utf-8') for n,v in after.items()},**{n:project_files.decode(v) for n,v in after_assets.items()}}
+ if old_bytes!=new_bytes:workflow.capture(task,before,before_assets,'修改前 · '+instruction[:80])
  touched=[];changes=[]
  try:
   for name in sorted(set(old_bytes)|set(new_bytes)):
@@ -132,6 +145,7 @@ def apply_coding_files(task, before, after, instruction, before_assets=None, aft
   for name in reversed(touched):
    try:
     path=project_files.target(project(task['id']),name)
+    if name in old_bytes and path.exists() and path.read_bytes()==old_bytes[name]:continue
     if name in before:write_project_file(path,before[name])
     elif name in old_bytes:write_project_bytes(path,old_bytes[name])
     elif path.exists():path.unlink()
@@ -144,7 +158,7 @@ def apply_coding_files(task, before, after, instruction, before_assets=None, aft
 def start_teaching(t, action='message'):
  if t.get('teaching_run',{}).get('status') in ('queued','running'): raise ValueError('教师正在处理上一条消息')
  teaching.state(t)
- job={'id':str(uuid.uuid4()),'status':'queued','detail':'消息已保存，等待教师处理','started_at':time.time()}
+ job={'id':str(uuid.uuid4()),'status':'queued','detail':'消息已保存，等待教师处理','started_at':time.time(),'queue_request_id':t.pop('_queue_launch_id',None)}
  if action in ('checkpoint','review') and t.get('coding_checkpoints'):
   checkpoint=t['coding_checkpoints'][-1]
   job['checkpoint_id']=checkpoint['checkpoint_id']
@@ -189,6 +203,13 @@ def start_teaching(t, action='message'):
    fresh['teaching_run'].update(result,elapsed_seconds=round(time.time()-job['started_at'],1))
    if result['status']=='failed': teaching.state(fresh)['last_error']=result['error']
    save(fresh)
+  finish_queue_request(work['id'],'teaching_run',job['id'])
+  with task_lock(work['id']):
+   latest=load(work['id'])
+   if result['status']=='completed' and workflow_records.initialize(latest)['auto_organize'] and teaching.TeachingAgent().mode=='model' and not any(m.get('queue_status')=='queued' for m in latest['messages']):
+    try:start_organizer(latest)
+    except ValueError:pass
+  drain_chat(work['id'])
  threading.Thread(target=worker,daemon=True).start()
 
 def start_checkpoint_teaching(t):
@@ -204,7 +225,13 @@ def start_checkpoint_teaching(t):
   t['coding_checkpoints'][-1]['delivery']={'status':'failed','error':detail}
   save(t)
 
+def redact_message(content):
+ for key in (providers.settings().get('key'),(opencode_executor.CONFIG or {}).get('key')):
+  if key and len(key)>=12:content=content.replace(key,'[REDACTED_PROVIDER_KEY]')
+ return project_safety.redact(content)
+
 def message(t, channel, role, content):
+ content=redact_message(content)
  entry=dict(channel=channel, role=role, content=content)
  if channel=='teaching' and role=='assistant': entry['engine']=teaching.TeachingAgent().mode
  t['messages'].append(entry)
@@ -213,7 +240,7 @@ def message(t, channel, role, content):
 def start_coding(t, instruction, planning=False, chatting=False, checkpoint_operation=None):
  if not opencode_executor.metadata()['configured']:raise ValueError('请先连接Coding模型')
  if not opencode_executor.binary():raise ValueError('OpenCode尚未安装')
- job={'id':str(uuid.uuid4()),'status':'running','detail':'Coding Agent正在处理当前阶段…','started_at':time.time()}
+ job={'id':str(uuid.uuid4()),'status':'running','detail':'Coding Agent正在处理当前阶段…','started_at':time.time(),'queue_request_id':t.pop('_queue_launch_id',None)}
  if checkpoint_operation is not None:
   job['checkpoint_operation']={'checkpoint_id':checkpoint_operation['root_checkpoint_id'],'request_id':checkpoint_operation['request_id']}
   job['skill_results']=checkpoint_operation['skill_results']
@@ -222,7 +249,7 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
  work=json.loads(json.dumps(t));original,original_assets=project_files.scan(project(t['id']));signature=task_signature(t)
  with connection() as c:knowledge_context=knowledge.search(c,t['id'],instruction,knowledge.code_hash(original)) if t.get('knowledge_enabled',True) else []
  packet=coding_workflow.prepare(work,instruction,learning.coding_packet(work,instruction),knowledge_context)
- packet['project_requirements']=[{'message_id':i,'content':m['content'][:2000]} for i,m in enumerate(work['messages']) if m['channel']=='coding' and m['role']=='user'][-5:]
+ packet['project_requirements']=[{'message_id':i,'content':m['content'][:2000]} for i,m in enumerate(work['messages']) if m['channel']=='coding' and m['role']=='user' and m.get('queue_status') not in ('queued','needs_retry')][-5:]
  if not chatting:
   packet.pop('plan',None)
   packet['authorized_phase']=t['plan'][t['step']] if t.get('plan') and t['step']<len(t['plan']) else instruction
@@ -233,9 +260,12 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
   packet['student_message']=instruction
  if chatting:
   packet={'student_message':instruction,'learning_context':packet['learning_context'],'project_knowledge':knowledge_context,'locked_plan':bool(t.get('plan')),'authorized_phase':t['plan'][t['step']] if t.get('plan') and t['step']<len(t['plan']) else None}
+ packet['shared_materials']=workflow.shared(work)
+ packet['reviewed_project_rules']=workflow_records.active_rules(work)
+ packet['current_feature']=next((r for r in workflow_records.initialize(work)['features'] if r['id']==work['workflow'].get('current_feature_id')),None)
  packet['interaction_mode']='planning' if planning else 'discussion' if chatting else 'execute_current_phase'
  if checkpoint_operation is not None:packet['skill_unlock_notifications']=checkpoint_operation['skill_results']
- packet['recent_dialogue']=[{'role':m['role'],'content':m['content'][:4000]} for m in work['messages'] if m['channel']=='coding'][-12:]
+ packet['recent_dialogue']=[{'role':m['role'],'content':m['content'][:4000]} for m in work['messages'] if m['channel']=='coding' and m.get('queue_status') not in ('queued','needs_retry')][-12:]
  def worker():
   try:
    if not chatting and not planning:packet['recent_dialogue']=[]
@@ -274,7 +304,7 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
     if not chatting and not planning:
      teaching_bridge.publish(fresh,instruction,result['text'],fresh['changes'][len(work['changes']):],result['files'])
     w=coding_workflow.state(fresh);w['status']='paused';w['tool_events']=result['events']
-    w['loads'].append({'phase':work['step'],'rule_versions':[{'id':r['id'],'revision':r['revision']} for r in packet['learning_context']['rules']],'knowledge_versions':[{'id':r['id'],'revision':r['revision'],'code_hash':r['code_hash']} for r in packet.get('project_knowledge',[])],'skill_versions':[],'submitted':True,'applied':False})
+    w['loads'].append({'phase':work['step'],'rule_versions':[{'id':r['id'],'revision':r['revision']} for r in packet['learning_context']['rules']],'knowledge_versions':[{'id':r['id'],'revision':r['revision'],'code_hash':r['code_hash']} for r in packet.get('project_knowledge',[])],'skill_versions':[],'submitted':True,'applied':False,'material_revision':packet['shared_materials']['revision'],'reviewed_rules':[{'id':r['id'],'revision':r['revision']} for r in packet['reviewed_project_rules']]})
     coding_workflow.event(fresh,'turn_finished','OpenCode轮次结束；等待学生审查与确认，未验证行为正确性')
     message(fresh,'coding','assistant',result['text']);fresh['messages'][-1]['code_refs']=code_refs.collect(result['text'],result['files']);fresh['coding_run'].update(status='completed',detail='已暂停，等待审查')
     if not chatting:
@@ -293,6 +323,91 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
      detail=str(e) if isinstance(e,ValueError) else '执行器异常：'+type(e).__name__+'；本轮未完成'
      fresh['coding_run'].update(status='failed',detail=detail)
      checkpoint_control.finish(fresh,job,'failed',error=detail);save(fresh)
+  finally:
+   finish_queue_request(t['id'],'coding_run',job['id'])
+   drain_chat(t['id'])
+ threading.Thread(target=worker,daemon=True).start()
+
+
+
+def start_verification(t,kind,body):
+ if task_busy(t):raise ValueError('项目正在执行，请稍后验证')
+ files,assets=project_files.scan(project(t['id']));code_hash=workflow.digest(files,assets)
+ if body.get('expected_hash')!=code_hash:raise ValueError('代码版本变化，请刷新后验证')
+ job={'id':str(uuid.uuid4()),'status':'running','kind':kind,'hash':code_hash};t['verification_run']=job;save(t)
+ def worker():
+  try:
+   if kind=='tests':result=project_runner.run(files,assets,body.get('recipe'))
+   else:
+    from agents import browser_runner
+    result=browser_runner.run(files,assets,body.get('cases'))
+   status='completed'
+  except Exception as e:result={'passed':False,'error':project_safety.redact(str(e))[:500] if isinstance(e,ValueError) else '验证执行失败；请核对浏览器/Node/测试依赖'};status='failed'
+  with task_lock(t['id']):
+   fresh=load(t['id'])
+   if fresh.get('verification_run',{}).get('id')!=job['id']:return
+   current=workflow.digest(*project_files.scan(project(t['id'])))==code_hash
+   record={'id':job['id'],'hash':code_hash,'current_at_completion':current,**result}
+   fresh.setdefault('execution_records' if kind=='tests' else 'browser_records',[]).append(record)
+   fresh['verification_run'].update(status=status,detail='验证已完成' if status=='completed' else result['error']);save(fresh)
+  drain_chat(t['id'])
+ threading.Thread(target=worker,daemon=True).start()
+
+def task_busy(t):
+ return any(t.get(k,{}).get('status') in ('queued','running') for k in ('coding_run','teaching_run','organizer_run','verification_run'))
+
+def finish_queue_request(tid,field,job_id):
+ with task_lock(tid):
+  fresh=load(tid);job=fresh.get(field,{})
+  if job.get('id')!=job_id or job.get('status')!='failed' or not job.get('queue_request_id'):return
+  row=next((m for m in fresh['messages'] if m.get('request_id')==job['queue_request_id']),None)
+  if row:row['queue_status']='needs_retry';save(fresh)
+
+def enqueue_chat(t,body):
+ channel=body.get('channel');text=body.get('message');request_id=body.get('request_id')
+ if channel not in ('coding','teaching') or not isinstance(text,str) or not text.strip() or len(text)>12000 or not isinstance(request_id,str) or not 1<=len(request_id)<=120:raise ValueError('消息格式无效')
+ text=redact_message(text)
+ old=next((m for m in t['messages'] if m.get('request_id')==request_id),None)
+ if old:
+  if old['content']!=text or old['channel']!=channel:raise ValueError('消息请求编号冲突')
+  return
+ t['messages'].append({'channel':channel,'role':'user','content':text,'request_id':request_id,'queue_status':'queued'})
+ save(t);drain_chat(t['id'])
+
+def drain_chat(tid):
+ with task_lock(tid):
+  t=load(tid)
+  if task_busy(t):return
+  row=next((m for m in t['messages'] if m.get('queue_status')=='queued'),None)
+  if not row:return
+  row['queue_status']='delivered';t['_queue_launch_id']=row['request_id'];save(t)
+  try:
+   if row['channel']=='teaching':start_teaching(t)
+   elif t.get('mode')=='opencode':
+    instruction=row['content'];intent=coding_workflow.message_intent(instruction)
+    start_coding(t,instruction,chatting=intent!='execute')
+   else:
+    t.pop('_queue_launch_id',None)
+    message(t,'coding','assistant','示例模式不执行任意开发指令，请连接Coding模型。');save(t)
+    threading.Thread(target=drain_chat,args=(tid,),daemon=True).start()
+  except Exception:
+   row['queue_status']='needs_retry';save(t)
+
+def start_organizer(t):
+ if task_busy(t):raise ValueError('当前任务仍在执行，整理可稍后重试')
+ run={'id':str(uuid.uuid4()),'status':'running','started_at':time.time()};t['organizer_run']=run;save(t)
+ work=json.loads(json.dumps(t));baseline=task_signature(t)
+ def worker():
+  try:
+   workflow_records.organize(work);result={'status':'completed','detail':'已生成待审核材料，尚未启用'}
+  except Exception as e:result={'status':'failed','detail':project_safety.redact(str(e))[:300] if isinstance(e,ValueError) else '材料整理失败，原话及现有材料已保留'}
+  with task_lock(work['id']):
+   fresh=load(work['id'])
+   if fresh.get('organizer_run',{}).get('id')!=run['id']:return
+   if task_signature(fresh)!=baseline:result={'status':'failed','detail':'材料已变化，未采用过期整理结果'}
+   elif result['status']=='completed':fresh['workflow']=work['workflow']
+   fresh['organizer_run'].update(result);save(fresh)
+  drain_chat(work['id'])
  threading.Thread(target=worker,daemon=True).start()
 
 def checkpoint_command(t, checkpoint_id, action, body):
@@ -350,6 +465,9 @@ class Handler(BaseHTTPRequestHandler):
   try:
    parts=urlparse(self.path).path.strip('/').split('/')
    if parts==['api','health']: return self.reply(200,{'coding_mode':'sample_or_opencode','coding':opencode_executor.metadata(),'teaching':teaching.TeachingAgent().metadata(),'storage':'sqlite'})
+   if parts==['api','students']:
+    with connection() as c:rows=c.execute('SELECT body FROM student_libraries').fetchall()
+    return self.reply(200,[{k:r[k] for k in ('id','name','revision')} for (body,) in rows for r in [json.loads(body)]])
    if parts==['api','tasks']:
     with connection() as c: rows=c.execute('SELECT body FROM tasks ORDER BY rowid DESC').fetchall()
     return self.reply(200,[{'id':(t:=json.loads(r[0]))['id'],'title':t['title']} for r in rows])
@@ -382,6 +500,11 @@ class Handler(BaseHTTPRequestHandler):
      if parts[4]=='skills':return self.reply(200,skill_gateway.view(t))
      if parts[4]=='events':return self.reply(200,{'events':teaching_bridge.events(t),'coding_run':t.get('coding_run')})
      if parts[4]=='files':return self.reply(200,{'files':read_project_files(t['id'])})
+   if len(parts)==4 and parts[:2]==['api','tasks'] and parts[3]=='delivery.zip':
+    with task_lock(parts[2]):
+     t=load(parts[2]);files,assets=project_files.scan(project(t['id']))
+     bundle,evidence=project_delivery.build(t,files,assets,t.get('delivery_statement',{}))
+    return self.reply(200,bundle,'application/zip')
    if len(parts)==3 and parts[:2]==['api','tasks']:
     with task_lock(parts[2]): return self.reply(200,snapshot(load(parts[2])))
    if len(parts)==3 and parts[0]=='preview':
@@ -389,7 +512,7 @@ class Handler(BaseHTTPRequestHandler):
     if not safe_preview_name(parts[2]): return self.reply(404,{'error':'文件不存在'})
     return self.reply(200,p.read_bytes(),mimetypes.guess_type(p.name)[0] or 'text/plain')
    name='index.html' if parts==[''] else '/'.join(parts)
-   if name not in ['index.html','app.js','style.css']: return self.reply(404,{'error':'地址不存在'})
+   if name not in ['index.html','app.js','workflow.js','style.css']: return self.reply(404,{'error':'地址不存在'})
    p=ROOT/'frontend'/name
    return self.reply(200,p.read_bytes(),(mimetypes.guess_type(name)[0] or 'text/plain')+'; charset=utf-8')
   except UnicodeError: self.reply(422,{'error':'项目文件不是有效的 UTF-8 文本，请修复文件编码'})
@@ -407,6 +530,9 @@ class Handler(BaseHTTPRequestHandler):
    if not isinstance(body,dict): raise ValueError('请求必须是对象')
    parts=urlparse(self.path).path.strip('/').split('/')
    with task_lock(parts[2] if len(parts)>3 and parts[:2]==['api','tasks'] else 'settings-or-create'):
+    if parts==['api','students']:
+     with connection() as c:record=student_library.create(c,body.get('name'))
+     return self.reply(200,record)
     if parts==['api','settings','coding']:
      opencode_executor.configure(body.get('api_key'),body.get('model'),body.get('region','cn'),body.get('provider','bailian'))
      return self.reply(200,opencode_executor.metadata())
@@ -445,12 +571,87 @@ class Handler(BaseHTTPRequestHandler):
      if action=='coding/plan-decision' and t.get('plan_decision',{}).get('request_id')==body.get('request_id'):
       if t['plan_decision'].get('choice')!=body.get('choice') or t['plan_decision'].get('plan')!=body.get('expected_plan'):raise ValueError('选择请求编号冲突')
       return self.reply(200,snapshot(t))
+     if action=='chat/send':
+      enqueue_chat(t,body);return self.reply(202,snapshot(load(t['id'])))
+     if action=='chat/retry':
+      row=next((m for m in t['messages'] if m.get('request_id')==body.get('request_id')),None)
+      if not row or row.get('queue_status')!='needs_retry':raise ValueError('没有需要重试的排队消息')
+      row['queue_status']='queued';save(t);drain_chat(t['id']);return self.reply(202,snapshot(load(t['id'])))
+     if t.get('organizer_run',{}).get('status')=='running' or t.get('verification_run',{}).get('status')=='running':raise ValueError('后台整理或验证正在进行，请稍后修改；聊天仍可发送')
      if t.get('coding_run',{}).get('status') in ('queued','running'):raise ValueError('Coding正在执行，请稍等')
      if t.get('teaching_run',{}).get('status') in ('queued','running'): raise ValueError('教师正在处理上一条消息，请稍等')
      if not isinstance(text,str) or len(text)>12000: raise ValueError('消息格式不正确或过长')
-     observations=body.get('runtime_observations')
+     observations=body.get('runtime_observations','workflow')
      if isinstance(observations,list):
       t['runtime_observations']=[{'type':x.get('type'),'message':x.get('message','')[:500],'line':x.get('line',0),'source':'browser_report_not_verified_test'} for x in observations[-20:] if isinstance(x,dict) and x.get('type') in ('ready','error') and isinstance(x.get('message'),str)]
+     if action=='workflow/feature':
+      files,assets=project_files.scan(project(t['id']));workflow_records.feature(t,body,workflow.digest(files,assets));save(t);return self.reply(200,snapshot(t))
+     elif action=='student/attach':
+      with connection() as c:student_library.attach(c,t,body)
+      save(t);return self.reply(200,snapshot(t))
+     elif action=='student/promote':
+      with connection() as c:record=student_library.promote(c,t,body)
+      return self.reply(200,{'student':{'id':record['id'],'name':record['name'],'revision':record['revision']},'task':snapshot(t)})
+     elif action=='delivery/prepare':
+      files,assets=project_files.scan(project(t['id']))
+      if body.get('expected_hash')!=workflow.digest(files,assets):raise ValueError('源码版本变化，请刷新结项材料')
+      bundle,evidence=project_delivery.build(t,files,assets,body.get('student_statement'))
+      workflow.capture(t,files,assets,'最终交付版本');t['delivery_statement']=body['student_statement'];t['delivery_report']=evidence
+      save(t);return self.reply(200,snapshot(t))
+     elif action=='project/runtime/start':
+      files,assets=project_files.scan(project(t['id']))
+      if body.get('expected_hash')!=workflow.digest(files,assets):raise ValueError('项目已变化，请刷新后启动')
+      project_runtime.start(t['id'],files,assets,body.get('kind'),body.get('entry'));return self.reply(200,snapshot(t))
+     elif action=='project/runtime/stop':
+      project_runtime.stop(t['id']);return self.reply(200,snapshot(t))
+     elif action=='project/browser':
+      start_verification(t,'browser',body);return self.reply(202,snapshot(t))
+     elif action=='project/test':
+      start_verification(t,'tests',body);return self.reply(202,snapshot(t))
+     elif action=='workflow/organize':
+      start_organizer(t);return self.reply(202,snapshot(t))
+     elif action=='workflow/proposals/review':
+      workflow_records.review(t,body);save(t);return self.reply(200,snapshot(t))
+     elif action=='workflow/rules/status':
+      workflow_records.rule_status(t,body);save(t);return self.reply(200,snapshot(t))
+     elif action=='workflow/options':
+      s=workflow_records.initialize(t)
+      if body.get('mode') not in ('guided','free'):raise ValueError('工作模式无效')
+      s['mode']=body['mode'];s['auto_organize']=bool(body.get('auto_organize',True));s['revision']+=1;save(t);return self.reply(200,snapshot(t))
+     elif action=='workflow/material':
+      workflow.update(t,body);save(t);return self.reply(200,snapshot(t))
+     elif action=='coding/prototype':
+      s=workflow.state(t)
+      if body.get('expected_revision')!=s['revision']:raise ValueError('材料已更新，请刷新后重试')
+      requirement=workflow.shared(t)['confirmed_materials']['requirements']
+      if not requirement:raise ValueError('请先保存并确认需求与验收单')
+      instruction='创建最小可见可运行原型，使用项目文件工具真实写入，仅实现以下已确认需求的核心操作，不擅自扩展；完成后暂停并说明如何预览和哪些验证未执行：'+requirement['content']
+      message(t,'coding','user',instruction);start_coding(t,instruction);return self.reply(202,snapshot(t))
+     elif action=='workflow/stage':
+      s=workflow.state(t)
+      if body.get('expected_revision')!=s['revision']:raise ValueError('流程已更新，请刷新')
+      stage=body.get('stage')
+      if type(stage) is not int or not 0<=stage<len(workflow.STAGES):raise ValueError('阶段无效')
+      s['stage']=stage;s['revision']+=1;save(t);return self.reply(200,snapshot(t))
+     elif action=='behavior/record':
+      files,assets=project_files.scan(project(t['id']))
+      if body.get('expected_hash')!=workflow.digest(files,assets):raise ValueError('代码已变化，请重新执行验证')
+      if body.get('result') not in ('passed','failed','inconclusive'):raise ValueError('验证结果无效')
+      if any(not isinstance(body.get(k),str) or not body[k].strip() or len(body[k])>4000 for k in ('operation','expected','actual')):raise ValueError('请完整填写操作、预期和实际结果')
+      t.setdefault('behavior_records',[]).append({'id':str(uuid.uuid4()),'hash':body['expected_hash'],'operation':body['operation'],'expected':body['expected'],'actual':body['actual'],'result':body['result'],'source':'student_report_not_independent_test','feature_id':workflow.state(t).get('current_feature_id')})
+      save(t);return self.reply(200,snapshot(t))
+     elif action=='versions/current':
+      files,assets=project_files.scan(project(t['id']));return self.reply(200,{'hash':workflow.digest(files,assets)})
+     elif action=='versions/save':
+      files,assets=project_files.scan(project(t['id']))
+      workflow.capture(t,files,assets,str(body.get('label','手动保存'))[:120]);save(t);return self.reply(200,snapshot(t))
+     elif action=='versions/restore':
+      files,assets=project_files.scan(project(t['id']))
+      if body.get('expected_hash')!=workflow.digest(files,assets):raise ValueError('当前代码已变化，请刷新后恢复')
+      version=next((v for v in t.get('project_versions',[]) if v['id']==body.get('version_id')),None)
+      if not version:raise ValueError('版本不存在')
+      apply_coding_files(t,files,version['files'],'恢复版本 '+version['label'],assets,version['assets'])
+      save(t);return self.reply(200,snapshot(t))
      if action=='coding/plan-decision':
       choice=body.get('choice');request_id=body.get('request_id');draft=t.get('plan_draft')
       if t.get('mode')!='opencode' or t.get('plan') or not draft:raise ValueError('当前没有待选择的计划')
@@ -617,7 +818,8 @@ class Handler(BaseHTTPRequestHandler):
      elif action=='files':
       name=body.get('path');content=body.get('content')
       if name not in read_project_files(t['id']) or not isinstance(content,str): raise ValueError('文件或内容不正确')
-      p=project(t['id'])/name;before=p.read_text(encoding='utf-8');write_project_file(p,content);t['changes'].append(dict(file=name,before=before,after=content,instruction='学生手动保存'))
+      files,assets=project_files.scan(project(t['id']))
+      apply_coding_files(t,files,{**files,name:content},'学生手动保存',assets,assets)
       s=teaching.state(t);s['assessment']='insufficient';s['transfer_answer']=None;s['pending_transfer']=None
      elif action=='verify':
       code=(project(t['id'])/'app.js').read_text(encoding='utf-8')
@@ -653,7 +855,9 @@ def create_preview_server(preferred_port):
 
 def recover_interrupted(t):
  changed=False
- for key in ('coding_run','teaching_run'):
+ for row in t.get('messages',[]):
+  if row.get('queue_status')=='queued':row['queue_status']='needs_retry';changed=True
+ for key in ('coding_run','teaching_run','organizer_run','verification_run'):
   if t.get(key,{}).get('status') in ('queued','running'):
    t[key].update(status='failed',detail='服务重启中断了上次执行，请检查项目后重试')
    if key=='coding_run':checkpoint_control.finish(t,t[key],'failed',error='service_restarted')

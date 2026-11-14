@@ -112,3 +112,13 @@ OpenCode 阶段执行或计划生成成功保存并暂停后，自动发送一�
 已修复明确创建JS文件被分入只读聊天的问题；项目内文本源码和配置支持创建、修改、重命名、删除。计划/讨论仍只读。Shell和外部联网工具尚未开放；实际OpenCode写文件可用 `python scripts/verify_opencode_write.py` 通过本机模拟模型验证，无真实模型费用。
 
 通用项目文件接续：已移除扩展名/文件名白名单，任意项目内文件路径均可创建写入；文本与二进制分别保存和传输，binary_files快照只含元数据。明确开发授权在未确认计划时也进入可写执行，不将“执行/继续”静默降为只读。执行超时保持900秒；health.coding公开file_access=project_all_types、permission_revision=2和execution_timeout_seconds以核对运行版本。Shell和外部联网权限未改变。
+
+## Skill 隔离评估
+
+见 [评估报告](docs/experiments/skill-audit-20261113/REPORT.md)：64项加载成功，有效真实效果样本为0，不能据此宣称提升。
+
+## 五阶段工作流
+
+左侧“项目材料与阶段”维护需求、设计、经验和教学记录，确认需求后可生成可见原型；代码栏提供改动查看、版本保存/恢复和行为验证记录。Teaching仍只读，按当前阶段结合六类应用教学方法交流。参见[实现范围](docs/WORKFLOW_IMPLEMENTATION.md)，已接入实际浏览器/项目测试、Python/Node服务、证据交付包与显式个人经验留存；公网部署账户及真实模型/教学效果仍需独立验收。
+
+完整本地流程现已包括消息排队、真实材料整理与审核、经验修订/停用、当前功能验收、真实浏览器用例、项目测试、Python/Node服务、交接包及个人通用经验。Teaching继续只读；真实模型效果和公网平台发布单独验收。真实页面复测：`python -X utf8 scripts/verify_workflow_browser.py`。
