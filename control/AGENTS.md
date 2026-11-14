@@ -1,3 +1,7 @@
+# 硅基流动接口接续（2026-11-14）
+
+先读docs/SILICONFLOW_API.md。Teaching新增SiliconFlow，与DeepSeek/OpenAI分开取密钥并固定官方URL；Coding原适配保留，UI默认模型沿用用户交接包。167项回归、真实浏览器配置/教学资料/工作流验收和本地模拟服务的真实CLI写文件复测通过；本轮未调用真实账户。不得用交接包旧文件覆盖教学资料、脱敏、只读权限和900秒执行。phase_contract等非API改动未融合。
+
 # 教学资料接入补充（2026-11-14）
 
 先读docs/TEACHING_LIBRARY.md。真实Teaching已接离线筛选课卡，最多两张，不把加载当掌握；source与lesson版本在turn保存。Teaching仍两个只读工具，Coding文件权限与900秒不变。更新catalog.json须重算hash并推进版本，不从学生路径或URL加载可执行内容；外部文献不能替代原话证据。

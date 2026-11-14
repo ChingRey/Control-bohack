@@ -8,7 +8,7 @@
 |---|---|
 | GET /api/health | Coding安装/配置/权限/超时、Teaching模式与服务商；不含密钥 |
 | POST /api/settings/coding | provider=bailian/siliconflow、api_key、model、region；仅进程配置 |
-| POST /api/settings/teaching | provider=deepseek/openai、api_key、model；地址按服务商固定 |
+| POST /api/settings/teaching | provider=deepseek/openai/siliconflow、api_key、model；地址按服务商固定 |
 | GET /api/tasks | 项目id/title列表 |
 | POST /api/tasks | coding_mode=opencode创建真实项目；默认sample为固定教材；checkpoint_delivery=automatic/manual |
 | GET P | 快照、真实文本文件、二进制元数据、run状态、材料、版本索引、预览及验证记录 |
@@ -90,3 +90,7 @@ SQLite tasks保留任务原话、材料历史、代码版本和证据；student_
 ## 筛选教学资料
 
 GET health增加teaching_library版本与课卡/来源数量。真实任务快照增加teaching_library（topics、preferences、suggested_lesson_ids、last_turn、sources）。POST P/teaching/resources接受lesson_id与choice=learn/later，或choice=auto；learn保存学生原话并异步请求教师，其他操作只保存偏好。最近turn.teaching_library保留实际提交的课卡、来源快照和版本；sample不标记已提交模型。详见[TEACHING_LIBRARY](TEACHING_LIBRARY.md)。
+
+## 硅基流动双模型
+
+Teaching新增provider=siliconflow，固定https://api.siliconflow.cn/v1/chat/completions，专用SILICONFLOW_API_KEY；默认zai-org/GLM-5.3。Coding原有siliconflow适配保留，UI默认Qwen/Qwen3-Coder-30B-A3B-Instruct。均允许自填账户支持的模型，两侧独立配置，密钥不自动跨角色或跨服务商回退。详见[SILICONFLOW_API](SILICONFLOW_API.md)。

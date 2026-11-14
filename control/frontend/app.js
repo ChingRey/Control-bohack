@@ -71,14 +71,14 @@ function renderTeacherStatus(){
 }
 
 function setProviderForm(provider,model){
- $('provider-choice').value=provider;$('api-key').value='';$('endpoint').value=provider==='openai'?'https://api.openai.com/v1/responses':'https://api.deepseek.com/chat/completions';
- $('model-choice').value=model||(provider==='deepseek'?'deepseek-flash':'');
+ $('provider-choice').value=provider;$('api-key').value='';$('endpoint').value=provider==='siliconflow'?'https://api.siliconflow.cn/v1/chat/completions':provider==='openai'?'https://api.openai.com/v1/responses':'https://api.deepseek.com/chat/completions';
+ $('model-choice').value=model||(provider==='siliconflow'?'zai-org/GLM-5.3':provider==='deepseek'?'deepseek-flash':'');
  $('model-suggestions').replaceChildren();
- if(provider==='deepseek')for(const value of ['deepseek-flash','deepseek-v4-pro']){const option=document.createElement('option');option.value=value;$('model-suggestions').append(option)}
- $('provider-note').textContent='当前项目代码和教学记录将发给 '+(provider==='openai'?'OpenAI（官方 Responses API）':'DeepSeek')+'。请填写账户有权限、支持工具调用和JSON输出的模型ID。保存不等于连接已验证。';
+ for(const value of provider==='siliconflow'?['zai-org/GLM-5.3']:provider==='deepseek'?['deepseek-flash','deepseek-v4-pro']:[]){const option=document.createElement('option');option.value=value;$('model-suggestions').append(option)}
+ $('provider-note').textContent='当前项目代码和教学记录将发给 '+(provider==='siliconflow'?'硅基流动':provider==='openai'?'OpenAI（官方 Responses API）':'DeepSeek')+'。请填写账户有权限、支持工具调用和JSON输出的模型ID。保存不等于连接已验证。';
 }
 $('provider-choice').onchange=()=>setProviderForm($('provider-choice').value);
-$('settings').onclick=()=>{const config=task?.teaching_provider;const provider=config?.provider==='openai'?'openai':'deepseek';setProviderForm(provider,config?.mode==='model'?config.model:null);$('settings-dialog').showModal()};
+$('settings').onclick=()=>{const config=task?.teaching_provider;const provider=config?.mode==='model'&&['openai','deepseek','siliconflow'].includes(config.provider)?config.provider:'siliconflow';setProviderForm(provider,config?.mode==='model'?config.model:null);$('settings-dialog').showModal()};
 $('close-settings').onclick=()=>{$('api-key').value='';$('settings-dialog').close()};
 $('connect-teacher').onclick=async()=>{try{await api('/settings/teaching',{provider:$('provider-choice').value,api_key:$('api-key').value,model:$('model-choice').value.trim()});$('api-key').value='';$('settings-dialog').close();task=await api('/tasks/'+task.id);render();toast('配置已保存，请点击审查代码验证连接')}catch(e){toast(e.message)}};
 
@@ -254,7 +254,7 @@ $('export-learning').onclick=async()=>{
 };
 
 function renderCodingWorkflow(){$('knowledge-enabled').checked=task.knowledge_enabled!==false;}
-$('coding-settings').onclick=()=>{$('settings-dialog').close();$('coding-settings-dialog').showModal()};
+$('coding-settings').onclick=()=>{$('settings-dialog').close();const config=task?.coding_provider;$('coding-provider').value=config?.configured?config.provider:'siliconflow';$('coding-region-label').hidden=$('coding-provider').value==='siliconflow';$('coding-model').value=config?.configured?config.model:'Qwen/Qwen3-Coder-30B-A3B-Instruct';$('coding-key').value='';$('coding-settings-dialog').showModal()};
 $('coding-settings-close').onclick=()=>{$('coding-key').value='';$('coding-settings-dialog').close()};
 $('coding-connect').onclick=async()=>{try{await api('/settings/coding',{provider:$('coding-provider').value,api_key:$('coding-key').value,model:$('coding-model').value.trim(),region:$('coding-region').value});$('coding-key').value='';$('coding-settings-dialog').close();task=await api('/tasks/'+task.id);render();toast('Coding配置已保存；实际调用尚待验证')}catch(e){toast(e.message)}};
 
@@ -264,7 +264,7 @@ const reviewCard=document.querySelector('.review-card');const reviewTitle=docume
 if(reviewCard&&reviewTitle){reviewCard.classList.add('collapsed');const toggleButton=document.createElement('button');toggleButton.type='button';toggleButton.className='review-toggle';toggleButton.textContent='查看审查';toggleButton.setAttribute('aria-expanded','false');reviewTitle.insertBefore(toggleButton,$('review-teaching'));const toggleReview=()=>{const collapsed=reviewCard.classList.toggle('collapsed');toggleButton.textContent=collapsed?'查看审查':'收起审查';toggleButton.setAttribute('aria-expanded',String(!collapsed))};toggleButton.onclick=toggleReview}
 
 
-$('coding-provider').onchange=()=>{$('coding-key').value='';$('coding-region-label').hidden=$('coding-provider').value==='siliconflow';$('coding-model').placeholder=$('coding-provider').value==='siliconflow'?'例如 Qwen/Qwen2.5-7B-Instruct':'填写账户可用的模型ID'};
+$('coding-provider').onchange=()=>{$('coding-key').value='';$('coding-model').value=$('coding-provider').value==='siliconflow'?'Qwen/Qwen3-Coder-30B-A3B-Instruct':'';$('coding-region-label').hidden=$('coding-provider').value==='siliconflow';$('coding-model').placeholder=$('coding-provider').value==='siliconflow'?'例如 Qwen/Qwen3-Coder-30B-A3B-Instruct':'填写账户可用的模型ID'};
 
 
 function planChoiceNode(){

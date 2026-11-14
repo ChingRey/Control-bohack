@@ -7,7 +7,9 @@ import re
 from urllib.parse import urlparse
 from urllib.request import Request
 
-ENDPOINTS={'deepseek':'https://api.deepseek.com/chat/completions','openai':'https://api.openai.com/v1/responses'}
+ENDPOINTS={'deepseek':'https://api.deepseek.com/chat/completions','openai':'https://api.openai.com/v1/responses','siliconflow':'https://api.siliconflow.cn/v1/chat/completions'}
+KEY_ENV={'openai':'OPENAI_API_KEY','deepseek':'DEEPSEEK_API_KEY','siliconflow':'SILICONFLOW_API_KEY'}
+DEFAULT_MODELS={'deepseek':'deepseek-flash','openai':'','siliconflow':'zai-org/GLM-5.3'}
 
 def settings():
     endpoint=os.getenv('TEACHING_ENDPOINT','')
@@ -15,21 +17,21 @@ def settings():
     if not provider:
         if endpoint:
             host=urlparse(endpoint).hostname
-            provider='openai' if host=='api.openai.com' else 'deepseek' if host=='api.deepseek.com' else 'compatible'
-        else:provider='openai' if os.getenv('OPENAI_API_KEY') and not os.getenv('DEEPSEEK_API_KEY') else 'deepseek'
-    if provider not in ('openai','deepseek','compatible'):raise ValueError('不支持的教学服务商')
+            provider={'api.openai.com':'openai','api.deepseek.com':'deepseek','api.siliconflow.cn':'siliconflow'}.get(host,'compatible')
+        else:provider='openai' if os.getenv('OPENAI_API_KEY') and not os.getenv('DEEPSEEK_API_KEY') else 'siliconflow' if os.getenv('SILICONFLOW_API_KEY') and not os.getenv('DEEPSEEK_API_KEY') else 'deepseek'
+    if provider not in ('openai','deepseek','siliconflow','compatible'):raise ValueError('不支持的教学服务商')
     if os.getenv('TEACHING_PROVIDER') in ENDPOINTS:endpoint=ENDPOINTS[provider]
-    key=os.getenv('OPENAI_API_KEY' if provider=='openai' else 'DEEPSEEK_API_KEY','') if provider!='compatible' else os.getenv('TEACHING_API_KEY','')
-    if not key and not os.getenv('TEACHING_PROVIDER'):key=os.getenv('TEACHING_API_KEY','')
+    key=os.getenv(KEY_ENV.get(provider,'TEACHING_API_KEY'),'')
+    if not key and not os.getenv('TEACHING_PROVIDER') and provider!='siliconflow':key=os.getenv('TEACHING_API_KEY','')
     return {'provider':provider,'endpoint':endpoint or ENDPOINTS.get(provider,''),'key':key,
-            'model':os.getenv('TEACHING_MODEL','' if provider=='openai' else 'deepseek-flash'),
+            'model':os.getenv('TEACHING_MODEL',DEFAULT_MODELS.get(provider,'deepseek-flash')),
             'protocol':'responses' if provider=='openai' else 'chat_completions'}
 
 def configure(provider,key,model):
-    if provider not in ENDPOINTS:raise ValueError('请选择DeepSeek或OpenAI')
+    if provider not in ENDPOINTS:raise ValueError('请选择硅基流动、DeepSeek或OpenAI')
     if not isinstance(key,str) or not key.strip() or not key.isascii() or any(c.isspace() for c in key.strip()) or len(key)>1024:raise ValueError('请输入有效API Key，不能含换行或空格')
     if not isinstance(model,str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:/-]{0,159}',model):raise ValueError('请输入账户可用的模型ID')
-    os.environ['OPENAI_API_KEY' if provider=='openai' else 'DEEPSEEK_API_KEY']=key.strip()
+    os.environ[KEY_ENV[provider]]=key.strip()
     os.environ['TEACHING_PROVIDER']=provider;os.environ['TEACHING_MODE']='model'
     os.environ['TEACHING_ENDPOINT']=ENDPOINTS[provider];os.environ['TEACHING_MODEL']=model
 
@@ -50,7 +52,7 @@ def request(config,messages,max_tokens,tools=None,json_mode=False):
     messages=project_safety.scrub(messages)
     endpoint=config['endpoint'];target=urlparse(endpoint)
     if not config['model'] or not target.hostname or (target.scheme!='https' and not(target.scheme=='http' and target.hostname in ('localhost','127.0.0.1'))):raise ValueError('模型地址或名称未正确配置')
-    if target.hostname in ('api.openai.com','api.deepseek.com') and not config['key']:raise ValueError('请先配置所选服务商的API Key')
+    if target.hostname in ('api.openai.com','api.deepseek.com','api.siliconflow.cn') and not config['key']:raise ValueError('请先配置所选服务商的API Key')
     if config['protocol']=='responses':
         payload={'model':config['model'],'input':response_input(messages),'max_output_tokens':max(4000,max_tokens),
                  'store':False,'include':['reasoning.encrypted_content'],'text':{'format':{'type':'json_object'}}}

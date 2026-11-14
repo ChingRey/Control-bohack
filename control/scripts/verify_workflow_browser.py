@@ -62,6 +62,24 @@ def main():
   selected=browser_runner.run({}, {},third,handler=Handler,screenshot=output/'teaching-library-ui.png')
   result['teaching_library_ui_passed']=selected['passed'];result['passed']=result['passed'] and selected['passed']
   if not selected['passed']:result['teaching_library_failure']=selected['results'][-1]
+  settings_cases=[{'action':'wait','ms':500},{'action':'click','selector':'#settings'},
+   {'action':'fill','selector':'#provider-choice','value':'siliconflow'},
+   {'action':'assert_value','selector':'#endpoint','value':'https://api.siliconflow.cn/v1/chat/completions'},
+   {'action':'assert_value','selector':'#model-choice','value':'zai-org/GLM-5.3'},
+   {'action':'assert_text','selector':'#provider-note','text':'硅基流动'},
+   {'action':'fill','selector':'#api-key','value':'fixture-browser-key'},
+   {'action':'fill','selector':'#provider-choice','value':'deepseek'},
+   {'action':'assert_value','selector':'#api-key','value':''},
+   {'action':'click','selector':'#coding-settings'},
+   {'action':'assert_value','selector':'#coding-provider','value':'siliconflow'},
+   {'action':'assert_value','selector':'#coding-model','value':'Qwen/Qwen3-Coder-30B-A3B-Instruct'},
+   {'action':'assert_exists','selector':'#coding-region-label[hidden]'},
+   {'action':'fill','selector':'#coding-provider','value':'bailian'},
+   {'action':'assert_exists','selector':'#coding-region-label:not([hidden])'},
+   {'action':'click','selector':'#coding-settings-close'}]
+  settings_result=browser_runner.run({}, {},settings_cases,handler=Handler,screenshot=output/'siliconflow-settings-ui.png')
+  result['siliconflow_settings_ui_passed']=settings_result['passed'];result['passed']=result['passed'] and settings_result['passed']
+  if not settings_result['passed']:result['siliconflow_settings_failure']=settings_result['results'][-1]
   final=b.load(tid);result.update(kind='isolated_workbench_ui_acceptance',real_model=False,proposal_origin='test_fixture',materials_confirmed=bool(final['workflow']['materials']['requirements']),rule_count=len(wr.active_rules(final)),browser_record_count=len(final.get('browser_records',[])),delivery_prepared=bool(final.get('delivery_report')))
   (output/'workflow-ui.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
   print(json.dumps({k:v for k,v in result.items() if k not in ('results',)},ensure_ascii=False))

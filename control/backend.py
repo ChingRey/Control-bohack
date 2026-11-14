@@ -539,7 +539,7 @@ class Handler(BaseHTTPRequestHandler):
      return self.reply(200,opencode_executor.metadata())
     if parts==['api','settings','teaching']:
      provider=body.get('provider','deepseek')
-     providers.configure(provider,body.get('api_key',''),body.get('model','deepseek-flash' if provider=='deepseek' else ''))
+     providers.configure(provider,body.get('api_key',''),body.get('model',providers.DEFAULT_MODELS.get(provider,'')))
      return self.reply(200,{'configured':True,'provider':teaching.TeachingAgent().metadata()})
     if parts==['api','tasks']:
      tid=str(uuid.uuid4());t=dict(id=tid,title='待办事项 · 示例教程',mode='sample',stage='created',step=0,plan=[],plan_draft=[],messages=[],changes=[],checks=[])
