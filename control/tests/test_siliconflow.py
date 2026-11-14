@@ -32,17 +32,17 @@ class SiliconFlowTests(unittest.TestCase):
  def test_environment_only_siliconflow_configuration(self):
   with patch.dict(os.environ,{'SILICONFLOW_API_KEY':'fixture-silicon-key'},clear=True):
    agent=teaching.TeachingAgent();self.assertEqual(agent.mode,'model');self.assertEqual(agent.config['provider'],'siliconflow');self.assertEqual(agent.config['model'],'zai-org/GLM-5.3')
- def test_teaching_tool_loop_and_library_survive_siliconflow_wire_adapter(self):
+ def test_single_pass_teaching_preserves_library_and_siliconflow_wire_adapter(self):
   t=task('请解释刷新与localStorage是什么');before=copy.deepcopy(t['files'])
-  replies=[Response({'choices':[{'message':{'role':'assistant','tool_calls':[{'id':'read-1','type':'function','function':{'name':'read_project_file','arguments':'{"path":"index.html","start_line":1,"limit":1}'}}]}}]}),Response({'choices':[{'message':{'role':'assistant','content':'需要区分页面内存和同一来源的localStorage。'}}]})]
-  with patch.dict(os.environ,{'TEACHING_PROVIDER':'siliconflow','SILICONFLOW_API_KEY':'fixture-silicon-key','TEACHING_MODEL':'zai-org/GLM-5.3'},clear=True),patch.object(teaching,'urlopen',side_effect=replies) as send:
+  response=Response({'choices':[{'message':{'role':'assistant','content':'需要区分页面内存和同一来源的localStorage。'}}]})
+  with patch.dict(os.environ,{'TEACHING_PROVIDER':'siliconflow','SILICONFLOW_API_KEY':'fixture-silicon-key','TEACHING_MODEL':'zai-org/GLM-5.3'},clear=True),patch.object(teaching,'urlopen',return_value=response) as send:
    reply=teaching.run(t)
-  self.assertIn('localStorage',reply);self.assertEqual(send.call_count,2)
-  for call in send.call_args_list:self.assertEqual(call.args[0].full_url,'https://api.siliconflow.cn/v1/chat/completions')
-  first=json.loads(send.call_args_list[0].args[0].data);ctx=json.loads(first['messages'][1]['content'])
+  self.assertIn('localStorage',reply);self.assertEqual(send.call_count,1)
+  self.assertEqual(send.call_args.args[0].full_url,'https://api.siliconflow.cn/v1/chat/completions')
+  first=json.loads(send.call_args.args[0].data);ctx=json.loads(first['messages'][1]['content'])
   self.assertIn('L09',[c['id'] for c in ctx['teaching_library']['lessons']])
-  last=json.loads(send.call_args_list[1].args[0].data);self.assertTrue(any(m.get('tool_call_id')=='read-1' for m in last['messages']))
-  turn=t['teaching']['turns'][-1];self.assertEqual(turn['provider']['provider'],'siliconflow');self.assertEqual(turn['tools'][0]['name'],'read_project_file')
+  self.assertTrue(first['stream']);self.assertNotIn('tools',first);self.assertEqual(first['thinking_budget'],1024)
+  turn=t['teaching']['turns'][-1];self.assertEqual(turn['provider']['provider'],'siliconflow');self.assertEqual(turn['tools'],[])
   self.assertTrue(turn['teaching_library']['submitted_to_model']);self.assertEqual(before,t['files']);self.assertNotIn('fixture-silicon-key',json.dumps(t))
  def test_summarizer_keeps_the_selected_provider_snapshot(self):
   with patch.dict(os.environ,{'TEACHING_PROVIDER':'siliconflow','SILICONFLOW_API_KEY':'fixture-silicon-key','TEACHING_MODEL':'zai-org/GLM-5.3'},clear=True):
@@ -69,14 +69,16 @@ class SiliconFlowAPITests(unittest.TestCase):
  def test_role_specific_configuration_and_no_key_in_snapshot_or_database(self):
   with patch.dict(os.environ,{},clear=True):
    status,provider=self.h.call('/api/settings/teaching',{'provider':'siliconflow','api_key':'teaching-fixture-key'})
-   self.assertEqual(status,200);self.assertEqual(provider['provider']['model'],'zai-org/GLM-5.3')
+   self.assertEqual(status,403)
+   providers.configure('siliconflow','teaching-fixture-key','zai-org/GLM-5.3')
    status,meta=self.h.call('/api/settings/coding',{'provider':'siliconflow','api_key':'coding-fixture-key','model':'Qwen/Qwen3-Coder-30B-A3B-Instruct'})
-   self.assertEqual(status,200);self.assertEqual(meta['provider'],'siliconflow')
+   self.assertEqual(status,403)
+   coding.configure('coding-fixture-key','Qwen/Qwen3-Coder-30B-A3B-Instruct',provider='siliconflow')
    self.assertEqual(providers.settings()['key'],'teaching-fixture-key');self.assertEqual(coding.CONFIG['key'],'coding-fixture-key')
    status,snapshot=self.h.call(self.h.path);self.assertEqual(status,200);self.assertEqual(len(snapshot['teaching_library']['topics']),21)
    for key in ('teaching-fixture-key','coding-fixture-key'):
     self.assertNotIn(key,json.dumps(snapshot));self.assertNotIn(key.encode(),Path(b.DB).read_bytes())
  def test_configuration_rejects_invalid_values_without_partial_changes(self):
   with patch.dict(os.environ,{},clear=True):
-   self.assertEqual(self.h.call('/api/settings/teaching',{'provider':'siliconflow','api_key':'invalid\nkey','model':'zai-org/GLM-5.3'})[0],400)
+   self.assertEqual(self.h.call('/api/settings/teaching',{'provider':'siliconflow','api_key':'invalid\nkey','model':'zai-org/GLM-5.3'})[0],403)
    self.assertNotIn('SILICONFLOW_API_KEY',os.environ);self.assertNotIn('TEACHING_PROVIDER',os.environ)

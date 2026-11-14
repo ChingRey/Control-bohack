@@ -1,0 +1,726 @@
+{
+  "version": "presets-from-code-v1",
+  "description": "已有代码中预设教法的结构化整理；场景、例子和观察计划为设计分析，全部未验证。",
+  "entries": [
+    {
+      "id": "seed-example",
+      "title": "具体例子先行",
+      "when": "学生对术语或抽象解释困惑时",
+      "action": "先用当前作品的一个具体操作展示前后变化，再说明概念。",
+      "verify": "学生能解释原理或正确预测新操作，不以复述老师原话作为独立掌握。",
+      "tags": [
+        "变量",
+        "状态",
+        "事件",
+        "概念",
+        "不懂",
+        "为什么"
+      ],
+      "source": "MDN及已有课卡的项目化讲解；应用初始策略，尚未验证效果",
+      "limits": "只影响讲法；不改开发授权、不认证掌握、不要求额外考试。",
+      "rationale": "用具体操作连接抽象概念，适合第一次遇到术语或误把界面当数据的情景。",
+      "example": "学生问状态是什么：先比较点击前分数3、点击后分数4，再解释保存分数的数据。",
+      "source_refs": [
+        {
+          "path": "agents/teaching_assets/skills/explain/SKILL.md",
+          "section": "知识补讲",
+          "sha256": "2950d35f7613805507e48121d9624139228a593a53c0d463e011fd3122b9f940"
+        }
+      ],
+      "evidence_plan": [
+        {
+          "dimension": "understanding",
+          "item_id": "explain",
+          "observe": "学生能否用自己的话说明数据如何变化",
+          "evidence_sources": [
+            "教师讲解原话",
+            "之后的学生解释"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "understanding",
+          "item_id": "predict",
+          "observe": "学生能否预测另一种输入或点击的结果",
+          "evidence_sources": [
+            "学生预测",
+            "可核实的执行结果"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "从已有教学设计整理为结构化预设；不是从学生效果推导的有效经验。"
+    },
+    {
+      "id": "seed-one-step",
+      "title": "一次一个重点",
+      "when": "学生混淆多个概念或信息量过大时",
+      "action": "只解释一个必要关系，等待学生回应后再推进；已解决的问题不重复讲。",
+      "verify": "观察同一困惑是否解除，以及后续是否仍依赖关键提示。",
+      "tags": [
+        "太多",
+        "步骤",
+        "复杂",
+        "混乱",
+        "不懂"
+      ],
+      "source": "应用初始教学设计，待真实教学验证",
+      "limits": "只影响讲法；不改开发授权、不认证掌握、不要求额外考试。",
+      "rationale": "减少同时引入的概念，适合学生明确反馈混乱；不能仅凭回复长就推断过载。",
+      "example": "学生说事件、变量和计时器都混在一起：本轮只讲点击如何改变分数，计时器暂留下一轮。",
+      "source_refs": [
+        {
+          "path": "agents/teaching_assets/project_teacher.md",
+          "section": "怎样教／深度与表达",
+          "sha256": "787f2e364261cadca0ac0bab9b404e92cf722ce26e7dcaeb3f90bc46bdb92340"
+        }
+      ],
+      "evidence_plan": [
+        {
+          "dimension": "pacing",
+          "item_id": "focus",
+          "observe": "是否收窄到一个主要关系",
+          "evidence_sources": [
+            "教师前后讲解"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "difficulty",
+          "item_id": "support",
+          "observe": "学生能否完成该小步而不继续要求拆分",
+          "evidence_sources": [
+            "学生反馈与尝试"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "从已有教学设计整理为结构化预设；不是从学生效果推导的有效经验。"
+    },
+    {
+      "id": "seed-prerequisite",
+      "title": "补必要前置",
+      "when": "学生表现出缺少当前理解必需的基础时",
+      "action": "先确认具体卡点，只补当前问题需要的一个前置概念，再回原问题。",
+      "verify": "观察学生能否回到原任务作出判断。",
+      "tags": [
+        "变量",
+        "基础",
+        "什么意思",
+        "不知道"
+      ],
+      "source": "已有课卡常见误解与前置知识；待验证",
+      "limits": "只影响讲法；不改开发授权、不认证掌握、不要求额外考试。",
+      "rationale": "处理已经暴露的具体前置缺口，不把学生预设为零基础。",
+      "example": "学生不知道条件是什么：用如果分数到10就结束解释一次判断，再回到结束条件。",
+      "source_refs": [
+        {
+          "path": "agents/teaching_assets/skills/diagnose/SKILL.md",
+          "section": "诊断与安排教学",
+          "sha256": "f3febe2e3303c56e5ceab161b81f907a0e7f9664c95fd4dace74eac2a7744deb"
+        }
+      ],
+      "evidence_plan": [
+        {
+          "dimension": "difficulty",
+          "item_id": "prerequisite",
+          "observe": "缺失前置是否被具体识别并补充",
+          "evidence_sources": [
+            "学生困惑原话",
+            "教师补讲"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "application",
+          "item_id": "independent",
+          "observe": "补充后能否回原任务给出判断",
+          "evidence_sources": [
+            "学生后续方案"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "从已有教学设计整理为结构化预设；不是从学生效果推导的有效经验。"
+    },
+    {
+      "id": "seed-project",
+      "title": "回到当前作品",
+      "when": "解释知识的用途或应用位置时",
+      "action": "联系当前阶段的真实功能或已核对代码，说明原理怎样影响该功能；未来阶段不当作遗漏。",
+      "verify": "观察学生能否据此提出合理修改范围或预期行为。",
+      "tags": [
+        "功能",
+        "代码",
+        "哪里",
+        "修改",
+        "项目"
+      ],
+      "source": "已有阶段边界及课卡策略，待验证",
+      "limits": "只影响讲法；不改开发授权、不认证掌握、不要求额外考试。",
+      "rationale": "将知识落到当前作品，适合学生问用途和代码位置；避免提前审查未来阶段。",
+      "example": "讲状态时关联当前游戏的分数显示，不转去讲尚未实现的账号系统。",
+      "source_refs": [
+        {
+          "path": "agents/teaching_assets/project_teacher.md",
+          "section": "与工程进度同步",
+          "sha256": "787f2e364261cadca0ac0bab9b404e92cf722ce26e7dcaeb3f90bc46bdb92340"
+        }
+      ],
+      "evidence_plan": [
+        {
+          "dimension": "relevance",
+          "item_id": "goal",
+          "observe": "解释是否服务当前阶段目标",
+          "evidence_sources": [
+            "当前计划",
+            "教师回复"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "relevance",
+          "item_id": "project",
+          "observe": "引用是否与当前版本作品一致",
+          "evidence_sources": [
+            "代码改动",
+            "当前版本验证记录"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "从已有教学设计整理为结构化预设；不是从学生效果推导的有效经验。"
+    },
+    {
+      "id": "seed-fade",
+      "title": "逐步减少提示",
+      "when": "学生已有部分理解并进行判断或应用时",
+      "action": "只给一个必要方向性提示，等待学生尝试；不先给完整答案或代发Coding指令。",
+      "verify": "观察学生能否在新的相近问题中独立提出修改或验证要求。",
+      "tags": [
+        "判断",
+        "预测",
+        "验证",
+        "怎么改",
+        "测试"
+      ],
+      "source": "已有引导应用策略，待验证",
+      "limits": "只影响讲法；不改开发授权、不认证掌握、不要求额外考试。",
+      "rationale": "学生已能部分应用时逐渐减弱帮助，避免一直依赖完整修复指令。",
+      "example": "第一次提示考虑空输入；下一次只问还有什么边界，让学生自己写验收。",
+      "source_refs": [
+        {
+          "path": "agents/teaching_assets/skills/socratic-review/SKILL.md",
+          "section": "引导审查与调试",
+          "sha256": "324638d6304205fcfcd5e0813be144ad38b22b620917a6020538ddab2c61c140"
+        }
+      ],
+      "evidence_plan": [
+        {
+          "dimension": "application",
+          "item_id": "independent",
+          "observe": "减少提示后能否提出合理修改要求",
+          "evidence_sources": [
+            "提示的先后原话",
+            "学生方案"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "adaptation",
+          "item_id": "compare",
+          "observe": "相近任务是否仍依赖关键答案",
+          "evidence_sources": [
+            "后续相近任务的学生表现"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "从已有教学设计整理为结构化预设；不是从学生效果推导的有效经验。"
+    },
+    {
+      "id": "preset-problem-return",
+      "title": "点明问题 → 讲原理 → 回到作品",
+      "when": "首次讲解一个具体问题，学生知道要做什么却不理解为什么时",
+      "action": "先指出一个学习问题，讲清一个相关机制和因果，再回同一问题说明如何判断或验证。",
+      "verify": "学生能解释该原理怎样影响当前功能，并提出一个合理验证方式。",
+      "limits": "已有理解或只问进度时不重复整套流程。 只调整教学方式，不修改开发授权、不自动验收或认证掌握；不强制问卷或额外考试。",
+      "tags": [
+        "为什么",
+        "原因",
+        "原理",
+        "讲解",
+        "问题"
+      ],
+      "source": "从现有代码／提示词提炼，适用情景由本次设计分析，效果待验证",
+      "source_refs": [
+        {
+          "path": "agents/teaching_assets/strategies/initial-v1.json",
+          "section": "steps identify/explain/return",
+          "sha256": "5dbb98180462169a5cec2bf28f11f3af9bd999e8cd0f695c2480aea592e56cd4"
+        }
+      ],
+      "rationale": "将讲原理与实际应用连接，避免只审查代码或只给修法。",
+      "example": "地鼠点击不加分：先定位命中判断，再讲状态与绘制的区别，最后让学生描述验证。",
+      "evidence_plan": [
+        {
+          "dimension": "understanding",
+          "item_id": "explain",
+          "observe": "能否解释现象与机制的联系",
+          "evidence_sources": [
+            "教师原理讲解",
+            "学生解释"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "relevance",
+          "item_id": "goal",
+          "observe": "是否回到同一功能而不是换话题",
+          "evidence_sources": [
+            "本轮目标",
+            "教师结尾建议"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "将已有预设教法整理为可检索、可观察、可撤销的条目；不代表已验证有效。"
+    },
+    {
+      "id": "preset-scope",
+      "title": "用核心操作收窄第一版",
+      "when": "刚提出项目想法、功能过多或无法决定先做什么时",
+      "action": "围绕使用者、一次核心操作、可见结果收窄需求，区分本版必做和以后再做，取舍由学生确认。",
+      "verify": "学生能说出一条端到端核心流程，并解释至少一项暂缓功能。",
+      "limits": "不擅自删除学生明确要求，不把澄清变成连续盘问。 只调整教学方式，不修改开发授权、不自动验收或认证掌握；不强制问卷或额外考试。",
+      "tags": [
+        "需求",
+        "第一版",
+        "范围",
+        "想做",
+        "功能太多",
+        "小游戏"
+      ],
+      "source": "从现有代码／提示词提炼，适用情景由本次设计分析，效果待验证",
+      "source_refs": [
+        {
+          "path": "agents/workflow_methods.py",
+          "section": "METHODS requirement-scoping",
+          "sha256": "c336b54cad675d1b3888bbe14d16c43e4c02aaa12f65bc798cd2a4879a61c58c"
+        }
+      ],
+      "rationale": "避免大计划淹没最早可实践的目标。",
+      "example": "打地鼠先做开始、点击计分、结束；音效与排行榜由学生决定是否后置。",
+      "evidence_plan": [
+        {
+          "dimension": "relevance",
+          "item_id": "goal",
+          "observe": "是否围绕本版核心目标",
+          "evidence_sources": [
+            "需求原话",
+            "计划"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "application",
+          "item_id": "independent",
+          "observe": "学生能否说明自己的取舍",
+          "evidence_sources": [
+            "学生范围决定"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "将已有预设教法整理为可检索、可观察、可撤销的条目；不代表已验证有效。"
+    },
+    {
+      "id": "preset-acceptance",
+      "title": "把愿望写成可观察的验收",
+      "when": "学生用好看、正常、流畅等模糊词描述结果，或只凭模型完成说明验收时",
+      "action": "把一个愿望展开为输入／操作、预期结果和应保留的旧行为，邀请学生确认。",
+      "verify": "另一个人能够照着描述执行并判断，学生能指出一个不应发生的结果。",
+      "limits": "不替学生制定产品选择，不把填写验收等同验证通过。 只调整教学方式，不修改开发授权、不自动验收或认证掌握；不强制问卷或额外考试。",
+      "tags": [
+        "验收",
+        "规则",
+        "预期",
+        "正常",
+        "需求",
+        "保留"
+      ],
+      "source": "从现有代码／提示词提炼，适用情景由本次设计分析，效果待验证",
+      "source_refs": [
+        {
+          "path": "agents/teaching_assets/library/catalog.json",
+          "section": "lessons L02",
+          "sha256": "9117df3b7f9ebb748816fa5dfbbe4d384a6bf8dff155b2f335d11cf3751904cf"
+        }
+      ],
+      "rationale": "先让成功条件可检查，再讨论实现。",
+      "example": "把结束后能重玩改成：再次点击开始后分数清零、计时回到30秒。",
+      "evidence_plan": [
+        {
+          "dimension": "application",
+          "item_id": "verify",
+          "observe": "验证描述是否含操作、预期与实际比较",
+          "evidence_sources": [
+            "学生验证描述",
+            "行为记录"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "relevance",
+          "item_id": "goal",
+          "observe": "验收是否对应当前需求",
+          "evidence_sources": [
+            "需求原话",
+            "验收建议"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "将已有预设教法整理为可检索、可观察、可撤销的条目；不代表已验证有效。"
+    },
+    {
+      "id": "preset-trace",
+      "title": "沿一次操作追踪数据路径",
+      "when": "学生知道几个文件或函数的名字，但不理解一次点击如何产生结果时",
+      "action": "选一个真实操作，按输入、事件处理、状态变化、界面更新追踪，引用已核对代码，不一次讲完整工程。",
+      "verify": "学生能把操作、状态和输出连起来，并预测改变一处后的结果。",
+      "limits": "未读源码时不编造函数和行号；明确求解释时先解释，不强制先猜。 只调整教学方式，不修改开发授权、不自动验收或认证掌握；不强制问卷或额外考试。",
+      "tags": [
+        "点击",
+        "事件",
+        "状态",
+        "流程",
+        "函数",
+        "页面"
+      ],
+      "source": "从现有代码／提示词提炼，适用情景由本次设计分析，效果待验证",
+      "source_refs": [
+        {
+          "path": "agents/workflow_methods.py",
+          "section": "METHODS concept-walkthrough",
+          "sha256": "c336b54cad675d1b3888bbe14d16c43e4c02aaa12f65bc798cd2a4879a61c58c"
+        }
+      ],
+      "rationale": "通过一条执行路径建立整体关系。",
+      "example": "点击地鼠 → 点击处理器 → 命中状态判断 → 分数加1 → 重绘分数。",
+      "evidence_plan": [
+        {
+          "dimension": "understanding",
+          "item_id": "explain",
+          "observe": "能否说明事件和数据的连接",
+          "evidence_sources": [
+            "教师代码讲解",
+            "学生解释"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "understanding",
+          "item_id": "predict",
+          "observe": "能否预测改动后的行为",
+          "evidence_sources": [
+            "学生预测",
+            "代码或执行证据"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "将已有预设教法整理为可检索、可观察、可撤销的条目；不代表已验证有效。"
+    },
+    {
+      "id": "preset-contrast",
+      "title": "用最小对比区分相似概念",
+      "when": "学生混淆两个相近概念、边界输入或处理顺序时",
+      "action": "选择只改变一个关键条件的两个小例子，展示差异并解释规则；再让学生判断一个新例子。",
+      "verify": "学生能说明决定结果的关键差异，而不只记住两个答案。",
+      "limits": "对比例子要符合当前业务规则；不能把其他项目的输入约束机械搬来。 只调整教学方式，不修改开发授权、不自动验收或认证掌握；不强制问卷或额外考试。",
+      "tags": [
+        "区别",
+        "空格",
+        "边界",
+        "混淆",
+        "顺序",
+        "相同"
+      ],
+      "source": "从现有代码／提示词提炼，适用情景由本次设计分析，效果待验证",
+      "source_refs": [
+        {
+          "path": "agents/teach.py",
+          "section": "ADAPT knowledge/judgment",
+          "sha256": "987174b7c11a72e8c121e671e1a40faaca43b9ed536b049b3c0416a975b45213"
+        }
+      ],
+      "rationale": "把不同结果归到一个明确条件，减少概念替换。",
+      "example": "对比纯空格标题和含内部空格的正常标题，说明规范化与有效性校验不同。",
+      "evidence_plan": [
+        {
+          "dimension": "understanding",
+          "item_id": "explain",
+          "observe": "能否指出关键区别",
+          "evidence_sources": [
+            "学生解释"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "understanding",
+          "item_id": "predict",
+          "observe": "能否处理第三个例子",
+          "evidence_sources": [
+            "学生新预测",
+            "预设答案或执行结果"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "将已有预设教法整理为可检索、可观察、可撤销的条目；不代表已验证有效。"
+    },
+    {
+      "id": "preset-predict-observe",
+      "title": "先预测，再观察，再解释差异",
+      "when": "学生愿意尝试且当前行为可以安全、快速观察时",
+      "action": "先请学生做一个简短预测，再观察操作结果，围绕预期与实际的差异解释原因。",
+      "verify": "保留预测原话与实际结果，观察学生能否修正自己的解释。",
+      "limits": "学生已经给出结果或直接求解释时不重复预测；不为收集证据强迫测试。 只调整教学方式，不修改开发授权、不自动验收或认证掌握；不强制问卷或额外考试。",
+      "tags": [
+        "预测",
+        "观察",
+        "运行",
+        "结果",
+        "试试",
+        "发生"
+      ],
+      "source": "从现有代码／提示词提炼，适用情景由本次设计分析，效果待验证",
+      "source_refs": [
+        {
+          "path": "agents/teach.py",
+          "section": "BASE sequence observe；对当前项目泛化",
+          "sha256": "987174b7c11a72e8c121e671e1a40faaca43b9ed536b049b3c0416a975b45213"
+        }
+      ],
+      "rationale": "把直觉与可核实结果联系，而不是只听老师结论。",
+      "example": "先预测点击空洞会不会加分，实际点一次，再查命中判断。",
+      "evidence_plan": [
+        {
+          "dimension": "understanding",
+          "item_id": "predict",
+          "observe": "预测与可核实结果是否一致",
+          "evidence_sources": [
+            "学生预测",
+            "行为／浏览器记录"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "application",
+          "item_id": "verify",
+          "observe": "能否比较预期和实际",
+          "evidence_sources": [
+            "学生操作描述",
+            "实际结果"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "将已有预设教法整理为可检索、可观察、可撤销的条目；不代表已验证有效。"
+    },
+    {
+      "id": "preset-test-paths",
+      "title": "用正常、边界、失败路径验证",
+      "when": "功能已实现，学生准备检查或说看起来没问题时",
+      "action": "围绕当前功能分别选一个正常路径、边界和失败情景，说明预期，邀请学生选择一个先试。",
+      "verify": "学生能自己提出或执行具体检查，并区分运行事实、静态推测与自报。",
+      "limits": "一次最多一个主要实践；教师没有执行工具时不声称测试过。 只调整教学方式，不修改开发授权、不自动验收或认证掌握；不强制问卷或额外考试。",
+      "tags": [
+        "测试",
+        "验证",
+        "边界",
+        "失败",
+        "bug",
+        "检查"
+      ],
+      "source": "从现有代码／提示词提炼，适用情景由本次设计分析，效果待验证",
+      "source_refs": [
+        {
+          "path": "agents/workflow_methods.py",
+          "section": "METHODS guided-testing",
+          "sha256": "c336b54cad675d1b3888bbe14d16c43e4c02aaa12f65bc798cd2a4879a61c58c"
+        }
+      ],
+      "rationale": "检查不应只覆盖正常演示路径。",
+      "example": "倒计时正常结束、时间为零后再点地鼠、重开一局，分别核对计分状态。",
+      "evidence_plan": [
+        {
+          "dimension": "application",
+          "item_id": "verify",
+          "observe": "学生是否能提出含预期的检查",
+          "evidence_sources": [
+            "学生测试方案",
+            "行为验证"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "relevance",
+          "item_id": "project",
+          "observe": "检查证据是否对应当前版本",
+          "evidence_sources": [
+            "当前代码哈希",
+            "测试／浏览器记录"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "将已有预设教法整理为可检索、可观察、可撤销的条目；不代表已验证有效。"
+    },
+    {
+      "id": "preset-focus-diff",
+      "title": "围绕本轮改动解释一个关键问题",
+      "when": "Coding刚完成阶段，学生需要理解改动或判断是否接受时",
+      "action": "对照已保存的改动与当前需求，选择一个最重要的变化，解释原因；区分错误、歧义、建议与未来事项。",
+      "verify": "学生能说明此次改动的作用与风险，并限定合理的修改范围。",
+      "limits": "不能把静态审查说成已复现；严重问题不能为了聚焦而隐瞒。 只调整教学方式，不修改开发授权、不自动验收或认证掌握；不强制问卷或额外考试。",
+      "tags": [
+        "改动",
+        "修改",
+        "完成",
+        "阶段",
+        "审查",
+        "这次"
+      ],
+      "source": "从现有代码／提示词提炼，适用情景由本次设计分析，效果待验证",
+      "source_refs": [
+        {
+          "path": "agents/workflow_methods.py",
+          "section": "METHODS code-review-diff",
+          "sha256": "c336b54cad675d1b3888bbe14d16c43e4c02aaa12f65bc798cd2a4879a61c58c"
+        }
+      ],
+      "rationale": "让代码审查服务教学，不把每轮变成全部工程复查。",
+      "example": "加入动画后解释命中状态何时更新，而不是同时要求重写所有样式。",
+      "evidence_plan": [
+        {
+          "dimension": "relevance",
+          "item_id": "project",
+          "observe": "解释是否有本轮真实改动支持",
+          "evidence_sources": [
+            "changes前后片段",
+            "当前代码"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "application",
+          "item_id": "independent",
+          "observe": "学生能否提出明确且不过范围的返工要求",
+          "evidence_sources": [
+            "学生给Coding的要求"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "将已有预设教法整理为可检索、可观察、可撤销的条目；不代表已验证有效。"
+    },
+    {
+      "id": "preset-reframe",
+      "title": "连续卡住时换解释路径",
+      "when": "学生明确反复不懂、同类回答无进展，或指出当前解释不适合时",
+      "action": "先定位卡点属于术语、关系、操作还是验证，再换一种例子、表示或更小步骤；不要只换措辞重复。",
+      "verify": "观察调整后相近问题中的解释或尝试是否改善；仅说懂了不足以确认。",
+      "limits": "不能仅凭追问次数推断理解差，也不能把沉默视为听懂。 只调整教学方式，不修改开发授权、不自动验收或认证掌握；不强制问卷或额外考试。",
+      "tags": [
+        "还是不懂",
+        "听不懂",
+        "没理解",
+        "什么意思",
+        "卡住",
+        "混乱"
+      ],
+      "source": "从现有代码／提示词提炼，适用情景由本次设计分析，效果待验证",
+      "source_refs": [
+        {
+          "path": "agents/teaching_assets/skills/diagnose/SKILL.md",
+          "section": "连续无进展要换方法",
+          "sha256": "f3febe2e3303c56e5ceab161b81f907a0e7f9664c95fd4dace74eac2a7744deb"
+        }
+      ],
+      "rationale": "把学生反馈转成可验证的教学调整假设。",
+      "example": "讲计时器学生仍混乱，改用时间线展示注册、触发、清理三个时刻。",
+      "evidence_plan": [
+        {
+          "dimension": "adaptation",
+          "item_id": "response",
+          "observe": "是否针对原卡点改变方法",
+          "evidence_sources": [
+            "学生困难原话",
+            "调整后的讲解"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "adaptation",
+          "item_id": "compare",
+          "observe": "相近任务是否出现具体改善",
+          "evidence_sources": [
+            "后续学生解释或方案"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "将已有预设教法整理为可检索、可观察、可撤销的条目；不代表已验证有效。"
+    },
+    {
+      "id": "preset-transfer",
+      "title": "换相近情境检查独立应用",
+      "when": "学生已经完成引导练习或主动要求检验理解，且愿意再试一个小判断时",
+      "action": "保留核心知识但换一个表面情境，先不给关键答案，观察学生独立解释和验证；作答后再反馈。",
+      "verify": "区分独立表现、提示后表现与复述，不能由一次正确推断长期掌握。",
+      "limits": "不强制额外考试；学生正求概念帮助时先解释，不能用考核禁答规则拒绝帮助。 只调整教学方式，不修改开发授权、不自动验收或认证掌握；不强制问卷或额外考试。",
+      "tags": [
+        "独立",
+        "迁移",
+        "学会",
+        "理解了",
+        "换一个",
+        "自己"
+      ],
+      "source": "从现有代码／提示词提炼，适用情景由本次设计分析，效果待验证",
+      "source_refs": [
+        {
+          "path": "agents/teaching_assets/skills/assess-summarize/SKILL.md",
+          "section": "换相似但不同情境",
+          "sha256": "5e0bc0e032f7e0efa4f79f04dfd8f6579ad2e11fef43927052ca1575f35c6270"
+        }
+      ],
+      "rationale": "检验学生能否应用关系，而不只重复原来的示例。",
+      "example": "计分变化已理解后，换成背包数量增加，让学生自己说明状态和显示如何同步。",
+      "evidence_plan": [
+        {
+          "dimension": "application",
+          "item_id": "independent",
+          "observe": "无关键答案时能否提出合理方案",
+          "evidence_sources": [
+            "此前提示轨迹",
+            "学生新方案"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        },
+        {
+          "dimension": "understanding",
+          "item_id": "explain",
+          "observe": "能否用新情境解释同一关系",
+          "evidence_sources": [
+            "学生独立解释"
+          ],
+          "status": "观察计划，尚未获得学生验证证据"
+        }
+      ],
+      "reason": "将已有预设教法整理为可检索、可观察、可撤销的条目；不代表已验证有效。"
+    }
+  ]
+}

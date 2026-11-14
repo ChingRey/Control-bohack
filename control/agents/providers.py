@@ -64,10 +64,14 @@ def request(config,messages,max_tokens,tools=None,json_mode=False):
         payload={'model':config['model'],'messages':messages,'max_tokens':max_tokens}
         if config['provider']=='siliconflow' and config['model'].startswith(('zai-org/GLM-5.3','Pro/zai-org/GLM-5.3')):
             payload['enable_thinking']=True
-            payload['thinking_budget']=2048
+            payload['thinking_budget']=config.get('_thinking_budget',2048)
+            if config.get('_reasoning_effort'):payload['reasoning_effort']=config['_reasoning_effort']
         if tools:payload['tools']=tools
         if target.hostname=='api.deepseek.com':payload['thinking']={'type':'disabled'}
         if json_mode:payload['response_format']={'type':'json_object'}
+    if config.get('_stream'):
+        payload['stream']=True
+        if config['protocol']!='responses':payload['stream_options']={'include_usage':True}
     return Request(endpoint,data=json.dumps(payload,ensure_ascii=False,separators=(',',':')).encode(),headers={'Content-Type':'application/json',**({'Authorization':'Bearer '+config['key']} if config['key'] else {})})
 
 def normalize(config,raw):

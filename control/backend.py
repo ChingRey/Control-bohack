@@ -16,7 +16,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
-from agents import project_titles, model_limits, teaching_evolution, workflow_records, project_safety, project_delivery, student_library, project_runner, project_runtime, teaching_library, workflow, teaching_sessions, evolution_port, skill_gateway, teaching_bridge, teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor, code_refs, project_files, checkpoint_control, checkpoints as checkpoint_events
+from agents import experience_evidence, experience_library, project_titles, model_limits, teaching_evolution, workflow_records, project_safety, project_delivery, student_library, project_runner, project_runtime, teaching_library, workflow, teaching_sessions, evolution_port, skill_gateway, teaching_bridge, teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor, code_refs, project_files, checkpoint_control, checkpoints as checkpoint_events
 from agents.coding import PLAN, FILES, SampleCodingAgent
 from agents import teaching_v021, experiment_api, strategy_library, teaching_trial
 
@@ -169,6 +169,7 @@ def snapshot(t):
  t['coding_provider']={'framework':'opencode' if t.get('mode')=='opencode' else 'sample',**opencode_executor.metadata()}
  t['teaching_provider'] = teaching.TeachingAgent().metadata()
  teaching.state(t)
+ with connection() as c:experience_library.attach(c,t)
  t['experience_run']=teaching_evolution.state(t)['run']
  t['knowledge_topics']=teaching.KNOWLEDGE
  if t.get('mode')=='opencode':t['teaching_library']=teaching_library.view(t)
@@ -253,6 +254,7 @@ def supersede_teaching(t, reason='已继续开发，本轮教学保留为历史�
 
 
 def start_teaching(t, action='message'):
+ with connection() as c:experience_library.attach(c,t)
  if t.get('teaching_run',{}).get('status') in ('queued','running'): raise ValueError('教师正在处理上一条消息')
  teaching.state(t)
  job={'id':str(uuid.uuid4()),'status':'queued','detail':'消息已保存，等待教师处理','started_at':time.time(),'queue_request_id':t.pop('_queue_launch_id',None)}
@@ -276,11 +278,19 @@ def start_teaching(t, action='message'):
      row=next((r for r in trace if r['attempt']==detail['attempt']),None)
      if row is None:trace.append(dict(detail))
      else:row.update(detail)
+    elif stage=='experience_loaded':
+     fresh['teaching_run'].update(status='running',stage=stage,detail='项目教学经验已读取',experience_context=detail)
+    elif stage=='materials_ready':
+     fresh['teaching_run'].update(status='running',stage=stage,detail='重点源码、教学经验和知识材料已准备完成',context_materials=detail)
     elif stage=='streaming':
      fresh['teaching_run'].update(status='running',stage=stage,detail='正在生成回复',partial_reply=redact_message(detail))
     else:
      fresh['teaching_run'].update(status='running',stage=stage,detail=detail)
      if stage=='thinking':fresh['teaching_run'].pop('partial_reply',None)
+    if stage not in ('request_trace','streaming'):
+     trace=fresh['teaching_run'].setdefault('preparation_trace',[])
+     trace.append({'stage':stage,'at':time.time()})
+     del trace[:-12]
     save(fresh)
   progress.cancelled=signal.is_set
   try:
@@ -333,6 +343,7 @@ def start_teaching(t, action='message'):
   with task_lock(work['id']):
    try:latest=load(work['id'])
    except ValueError:return
+   with connection() as c:experience_library.attach(c,latest)
    es=teaching_evolution.state(latest)
    if result['status']=='completed' and es['auto'] and es['mode']!='off' and teaching.TeachingAgent().mode=='model' and teaching_evolution.pending(latest):
     try:start_experience_review(latest)
@@ -421,9 +432,19 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
  if checkpoint_operation is not None:packet['skill_unlock_notifications']=checkpoint_operation['skill_results']
  packet['recent_dialogue']=[{'role':m['role'],'content':m['content'][:4000]} for m in work['messages'] if m['channel']=='coding' and m.get('queue_status') not in ('queued','needs_retry')][-12:]
  def worker():
+  def coding_progress(update):
+   with task_lock(t['id']):
+    fresh=load(t['id']);current=fresh.get('coding_run',{})
+    if current.get('id')!=job['id'] or current.get('status')!='running':return
+    current.update({key:update[key] for key in ('stage','detail','model_rounds','completed_tools','elapsed_seconds') if key in update})
+    trace=current.setdefault('progress_trace',[])
+    trace.append({**update,'at':time.time()})
+    del trace[:-60]
+    save(fresh)
   try:
    if not chatting and not planning:packet['recent_dialogue']=[]
-   result=opencode_executor.execute(original,packet,planning or chatting or review_only,chatting or review_only,original_assets) if original_assets else opencode_executor.execute(original,packet,planning or chatting or review_only,chatting or review_only)
+   with opencode_executor.observe_progress(coding_progress):
+    result=opencode_executor.execute(original,packet,planning or chatting or review_only,chatting or review_only,original_assets) if original_assets else opencode_executor.execute(original,packet,planning or chatting or review_only,chatting or review_only)
    after_assets=result.get('binary_files',original_assets)
    with task_lock(t['id']):
     fresh=load(t['id'])
@@ -468,7 +489,7 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
     if not chatting and not planning and work.get('plan'):
      fresh['messages'][-1]['phase_report']={'index':work['step'],'title':work['plan'][work['step']],
         'status':'executed_pending_review','execution_status':'executed','acceptance_status':'not_accepted','changed_files':[c['file'] for c in fresh['changes'][len(work['changes']):]],'scope_verified':review_only}
-    fresh['coding_run'].update(status='completed',detail='计划第'+str(work['step']+1)+'项已暂停，等待检查' if not chatting and not planning and work.get('plan') else '已执行，暂停等待审查')
+    fresh['coding_run'].update(elapsed_seconds=round(time.time()-job['started_at'],1),status='completed',detail='计划第'+str(work['step']+1)+'项已暂停，等待检查' if not chatting and not planning and work.get('plan') else '已执行，暂停等待审查')
     if not chatting:
      checkpoint=checkpoint_events.record(fresh,job['id'],instruction,result['text'],original,result['files'],work['step'],'planning' if planning else 'development',result.get('events',[]),original_assets,after_assets)
      if checkpoint_operation is not None:
@@ -477,13 +498,19 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
     checkpoint_control.finish(fresh,job,'completed',job['id'] if not chatting else None)
     save(fresh)
     if not chatting:start_checkpoint_teaching(fresh)
+    elif fresh.get('checkpoint_delivery')!='manual':
+     try:start_teaching(fresh,'coding_discussion')
+     except Exception as exc:
+      fresh=load(t['id'])
+      fresh['teaching_run']={'id':str(uuid.uuid4()),'status':'failed','detail':'Coding回复已保存，教学交接未完成；可主动请教师讲解',**background_error(exc)}
+      save(fresh)
   except Exception as e:
    with task_lock(t['id']):
     fresh=load(t['id'])
     if fresh.get('coding_run',{}).get('id')==job['id']:
      skill_gateway.record(fresh,job['id'],work['step'],packet['learning_context']['skills'],'failed')
      detail=str(e) if isinstance(e,ValueError) else '执行器异常：'+type(e).__name__+'；本轮未完成'
-     fresh['coding_run'].update(status='failed',detail=detail)
+     fresh['coding_run'].update(status='failed',detail=detail,elapsed_seconds=round(time.time()-job['started_at'],1))
      checkpoint_control.finish(fresh,job,'failed',error=detail);save(fresh)
   finally:
    finish_queue_request(t['id'],'coding_run',job['id'])
@@ -663,6 +690,7 @@ def start_organizer(t):
   with task_lock(work['id']):
    try:latest=load(work['id'])
    except ValueError:return
+   with connection() as c:experience_library.attach(c,latest)
    es=teaching_evolution.state(latest)
    if es['auto'] and es['mode']!='off' and teaching.TeachingAgent().mode=='model' and teaching_evolution.pending(latest):
     try:start_experience_review(latest)
@@ -674,12 +702,15 @@ def start_organizer(t):
 
 
 def start_experience_review(t):
+ with connection() as c:experience_library.attach(c,t)
  if t.get('mode')!='opencode':raise ValueError('教学经验反思仅用于真实项目')
  if teaching.TeachingAgent().mode!='model':raise ValueError('请先连接Teaching模型')
  s=teaching_evolution.state(t)
  if s['mode']=='off':raise ValueError('经验反思已关闭')
  if s['run'].get('status')=='running':raise ValueError('经验反思正在运行')
- review=teaching_evolution.build_review(t)
+ t['files'],assets=project_files.scan(project(t['id']))
+ t['project_hash']=workflow.digest(t['files'],assets)
+ review=experience_evidence.enrich(t,teaching_evolution.build_review(t))
  run={'id':str(uuid.uuid4()),'status':'running','stage':'preparing','started_at':time.time(),
       'detail':'正在评价交互并反思教法','from_id':review['from_id'],'through_id':review['through_id'],
       'source_digest':review['source_digest'],'playbook_revision':review['playbook_revision'],
@@ -714,6 +745,7 @@ def start_experience_review(t):
   with task_lock(work['id']):
    try:fresh=load(work['id'])
    except ValueError:return
+   with connection() as c:experience_library.attach(c,fresh)
    es=teaching_evolution.state(fresh)
    if es['run'].get('id')!=run['id']:return
    # Never disguise a timeout/model/validation failure as a version conflict.
@@ -723,7 +755,10 @@ def start_experience_review(t):
       result={'status':'conflict','detail':'引用的原话已被修改，结果保留但未入库','error_code':'source_changed','unapplied_result':analyzed}
      elif es['revision']!=review['playbook_revision']:
       result={'status':'conflict','detail':'经验库已被调整，结果保留但未覆盖新版','error_code':'playbook_changed','unapplied_result':analyzed}
-     else:teaching_evolution.apply(fresh,review,analyzed)
+     else:
+      with connection() as c:
+       c.execute('BEGIN IMMEDIATE')
+       experience_library.commit_review(c,fresh,review,analyzed)
     except Exception as exc:
      result={'status':'failed','detail':'结果合并未通过校验；已完成步骤保留',**background_error(exc)}
    current=teaching_evolution.state(fresh)['run']
@@ -792,6 +827,12 @@ class Handler(BaseHTTPRequestHandler):
   self.send_response(code);self.send_header('Content-Type',mime);self.send_header('Content-Length',str(len(raw)));self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.end_headers();self.wfile.write(raw)
  def do_GET(self):
   try:
+   if urlparse(self.path).path=='/api/experience-library':
+    if self.headers.get('Host','') not in (f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}',f'{PUBLIC_HOST}:{self.server.server_port}'):return self.reply(403,{'error':'不允许的Host'})
+    with connection() as c:
+     c.execute('BEGIN IMMEDIATE')
+     result=experience_library.view(c)
+    return self.reply(200,result)
    parts=urlparse(self.path).path.strip('/').split('/')
    if parts in (['api','teaching','strategy-trials'],['api','teaching','strategy-trials','simulation']):
     host=self.headers.get('Host','')
@@ -885,6 +926,12 @@ class Handler(BaseHTTPRequestHandler):
    with task_lock(parts[2] if len(parts)>3 and parts[:2]==['api','tasks'] else 'settings-or-create'):
     if parts in (['api','settings','coding'],['api','settings','teaching']):
      return self.reply(403,{'error':'模型由演示负责人统一配置，学生端不提供修改入口'})
+    if parts==['api','experience-library']:
+     with connection() as c:
+      c.execute('BEGIN IMMEDIATE')
+      experience_library.manage(c,body)
+      result=experience_library.view(c)
+     return self.reply(200,result)
     if parts==['api','demo-student']:
      if body.get('confirmed') is not True:raise ValueError('请确认共享演示身份')
      return self.reply(200,demo_student(adopt=False))
@@ -912,7 +959,10 @@ class Handler(BaseHTTPRequestHandler):
      if delivery not in ('automatic','manual'):raise ValueError('checkpoint_delivery必须为automatic或manual')
      t['checkpoint_delivery']=delivery
      if body.get('coding_mode')=='opencode':
-      t.update(mode='opencode',title='未命名项目',title_mode='auto');coding_workflow.state(t)
+      t.update(mode='opencode');coding_workflow.state(t)
+      with connection() as c:
+       c.execute('BEGIN IMMEDIATE')
+       project_titles.initialize(c,t,body.get('title',''))
      if t['mode']!='opencode':
       for name,content in FILES.items(): (project(tid)/name).write_text(content,encoding='utf-8')
      if t['mode']=='sample':message(t,'coding','assistant','你好，先说说你想开发什么。初版使用固定待办教程，示例 Agent 不调用真实模型。')
@@ -971,11 +1021,15 @@ class Handler(BaseHTTPRequestHandler):
      if action=='project/rename':
       project_titles.rename(t,body.get('title'));t['_explicit_title_edit']=True;save(t);return self.reply(200,snapshot(t))
      elif action=='teaching/experience-import':
-      import_teaching_experience(t,body);save(t);return self.reply(200,snapshot(t))
+      raise ValueError('现在使用同一份跨项目经验库，无需复制；请在顶部经验库管理')
      elif action=='teaching/experience-review':
       start_experience_review(t);return self.reply(202,snapshot(t))
      elif action=='teaching/experience-manage':
-      teaching_evolution.manage(t,body);save(t);return self.reply(200,snapshot(t))
+      with connection() as c:
+       c.execute('BEGIN IMMEDIATE')
+       experience_library.manage(c,body)
+       experience_library.attach(c,t)
+      save(t);return self.reply(200,snapshot(t))
      elif action=='workflow/feature':
       files,assets=project_files.scan(project(t['id']));workflow_records.feature(t,body,workflow.digest(files,assets));save(t);return self.reply(200,snapshot(t))
      elif action=='student/attach':

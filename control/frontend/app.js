@@ -70,7 +70,16 @@ async function enterProject(id){
 }
 async function createHomeProject(){
  if(hasCodeChanges())return toast('请先保存代码修改');
- try{const next=await api('/tasks',{coding_mode:'opencode',student_id:demoStudent?.id});await enterProject(next.id)}catch(e){toast(e.message)}
+ if(document.querySelector('#create-repository-dialog'))return;
+ const dialog=document.createElement('dialog'),form=document.createElement('form'),heading=document.createElement('h2'),input=document.createElement('input'),hint=document.createElement('p'),actions=document.createElement('div'),create=document.createElement('button'),cancel=document.createElement('button'),error=document.createElement('p');
+ dialog.id='create-repository-dialog';dialog.className='repository-name-dialog';heading.textContent='新建仓库';
+ input.id='new-repository-name';input.maxLength=60;input.placeholder='输入仓库名称（可留空）';input.setAttribute('aria-label','仓库名称');
+ hint.textContent='留空将依次命名为未命名仓库一、未命名仓库二……';
+ create.type='submit';create.textContent='创建';create.className='primary';cancel.type='button';cancel.textContent='取消';cancel.onclick=()=>dialog.close();error.setAttribute('role','status');
+ actions.append(cancel,create);form.append(input,hint,error,actions);dialog.append(heading,form);document.body.append(dialog);
+ dialog.addEventListener('close',()=>dialog.remove());
+ form.onsubmit=async event=>{event.preventDefault();if(create.disabled)return;create.disabled=true;error.textContent='';try{const next=await api('/tasks',{coding_mode:'opencode',title:input.value.trim(),student_id:demoStudent?.id});dialog.close();await enterProject(next.id);$('coding-reset')?.click()}catch(e){error.textContent=e.message;create.disabled=false}};
+ dialog.showModal();input.focus();
 }
 async function showProjectEvidence(id){
  try{
@@ -100,23 +109,71 @@ async function chooseProjectExperience(targetId){
 }
 function editProjectName(id,current){
  const dialog=document.createElement('dialog'),heading=document.createElement('h2'),form=document.createElement('form'),input=document.createElement('input'),save=document.createElement('button'),cancel=document.createElement('button');
- heading.textContent='项目名称';input.value=current;input.maxLength=60;input.required=true;input.setAttribute('aria-label','项目名称');save.textContent='保存';save.className='primary';cancel.textContent='取消';cancel.type='button';cancel.onclick=()=>dialog.close();
+ heading.textContent='仓库名称';input.value=current;input.maxLength=60;input.required=true;input.setAttribute('aria-label','仓库名称');save.textContent='保存';save.className='primary';cancel.textContent='取消';cancel.type='button';cancel.onclick=()=>dialog.close();
  form.append(input,save,cancel);form.onsubmit=async event=>{event.preventDefault();try{const updated=await api('/tasks/'+id+'/project/rename',{title:input.value});if(task?.id===id){task=updated;render()}dialog.close();showProjectHome()}catch(e){toast(e.message)}};
  dialog.append(heading,form);dialog.addEventListener('close',()=>dialog.remove());document.body.append(dialog);dialog.showModal();input.focus();input.select();
 }
 async function showProjectHome(){
  document.body.classList.add('home-open');let home=$('project-home');
  if(!home){home=document.createElement('main');home.id='project-home';document.body.append(home)}
- home.replaceChildren();const node=(tag,text,parent=home)=>{const n=document.createElement(tag);n.textContent=text;parent.append(n);return n};
- node('p','CONTROL · 学生工作台').className='home-eyebrow';node('h1','从一个想法，做出自己的作品。');node('p','你的项目、对话和学习记录保存在当前服务中，下次可以接着做。');
- node('div','演示学生 · 共享演示身份（未接入真实登录）').className='demo-identity';
- const start=node('button','＋ 开始新项目');start.className='primary';start.onclick=createHomeProject;
- node('h2','我的项目与课程历史');const grid=node('div','');grid.className='project-grid';
- try{demoStudent=await api('/demo-student',{confirmed:true});const projects=(await api('/tasks')).filter(p=>!p.student_id||p.student_id===demoStudent.id);document.querySelector('.demo-identity').textContent='演示学生 · 未关联项目需手动确认，跨项目教法需手动选择';
- const last=localStorage.getItem('control-workbench-task');projects.sort((a,b)=>(Number(b.updated_at)||0)-(Number(a.updated_at)||0));
- if(!projects.length)node('p','还没有项目，开始你的第一节实践课。',grid);
- for(const project of projects){const card=node('article','',grid);node('span',project.id===last?'上次学习':'已保存项目',card).className='home-eyebrow';node('h3',project.title,card);const rename=node('button','重命名',card);rename.className='project-rename';rename.onclick=()=>editProjectName(project.id,project.title);node('p',project.phases===undefined?'项目已保存，打开后继续原来的代码与对话':`阶段 ${project.step||0}/${project.phases||0} · ${project.messages||0} 条对话 · ${project.reviews||0} 次反思`,card);const go=node('button','继续学习 →',card);go.onclick=()=>enterProject(project.id);if(!project.student_id){const attach=node('button','关联到演示学生',card);attach.onclick=async()=>{try{await api('/tasks/'+project.id+'/student/attach',{student_id:demoStudent.id,confirmed:true});showProjectHome()}catch(e){toast(e.message)}}}else{const reuse=node('button','选择已有教法',card);reuse.onclick=()=>chooseProjectExperience(project.id)}const evidence=node('button','查看教学记录',card);evidence.onclick=()=>showProjectEvidence(project.id)}
- }catch(e){node('p','项目列表加载失败：'+e.message,grid);const retry=node('button','重新加载',grid);retry.onclick=showProjectHome}
+ const loadId=newRequestId();home.dataset.loadId=loadId;home.replaceChildren();
+ const node=(tag,text,parent=home,cls='')=>{const n=document.createElement(tag);if(text!==null)n.textContent=text;if(cls)n.className=cls;parent.append(n);return n};
+ const shell=node('div',null,home,'studio-shell'),main=node('div',null,shell,'studio-main');
+ const starfield=node('div',null,home,'studio-starlayer');starfield.setAttribute('aria-hidden','true');node('div',null,starfield,'studio-star-far');node('div',null,starfield,'studio-star-mid');node('div',null,starfield,'studio-star-near');node('div',null,starfield,'studio-nebula');
+ if(!matchMedia('(prefers-reduced-motion: reduce)').matches){let pointerFrame=0;home.onpointermove=event=>{if(event.pointerType!=='mouse'&&event.pointerType!=='pen')return;if(pointerFrame)return;const x=event.clientX/innerWidth-.5,y=event.clientY/innerHeight-.5;pointerFrame=requestAnimationFrame(()=>{pointerFrame=0;home.style.setProperty('--pointer-far-x',(x*-9)+'px');home.style.setProperty('--pointer-far-y',(y*-7)+'px');home.style.setProperty('--pointer-mid-x',(x*-19)+'px');home.style.setProperty('--pointer-mid-y',(y*-14)+'px');home.style.setProperty('--pointer-near-x',(x*-34)+'px');home.style.setProperty('--pointer-near-y',(y*-25)+'px');home.style.setProperty('--pointer-nebula-x',(x*15)+'px');home.style.setProperty('--pointer-nebula-y',(y*12)+'px')})};home.onpointerleave=()=>{home.style.setProperty('--pointer-far-x','0px');home.style.setProperty('--pointer-far-y','0px');home.style.setProperty('--pointer-mid-x','0px');home.style.setProperty('--pointer-mid-y','0px');home.style.setProperty('--pointer-near-x','0px');home.style.setProperty('--pointer-near-y','0px');home.style.setProperty('--pointer-nebula-x','0px');home.style.setProperty('--pointer-nebula-y','0px')}}
+ const hero=node('section',null,main,'studio-hero');hero.setAttribute('aria-label','Control 项目控制舱');
+ const heroScene=node('div',null,hero,'studio-hero-scene');heroScene.setAttribute('aria-hidden','true');
+ const constellation=node('div',null,heroScene,'studio-constellation');
+ for(let i=0;i<48;i++){const dot=node('i',null,constellation,'studio-dot');dot.style.setProperty('--x',((i*37+11)%100)+'%');dot.style.setProperty('--y',((i*61+7)%100)+'%');dot.style.setProperty('--delay',((i%13)*-.31)+'s');dot.style.setProperty('--size',(i%7===0?3:2)+'px')}
+ const orbit=node('div',null,heroScene,'studio-orbit studio-orbit-one');node('div',null,heroScene,'studio-orbit studio-orbit-two');
+ const core=node('div',null,heroScene,'studio-core');node('span','C',core);
+ const heroCopy=node('div',null,hero,'studio-hero-copy');
+ const slogan=node('h1',null,heroCopy);slogan.append(node('span',null,slogan,'studio-headline-line'));node('span','代码交给 ',slogan.children[0]);node('span','AI',slogan.children[0],'studio-headline-ai');const secondLine=node('span',null,slogan,'studio-headline-line');node('span','未来由你 ',secondLine);node('span','Control',secondLine,'studio-headline-control');
+ node('p','让想法、代码、审查与学习，在同一个项目空间里持续向前。',heroCopy,'studio-hero-subtitle');
+ const skip=node('button','跳过开场',hero,'studio-intro-skip');skip.type='button';skip.onclick=()=>{home.classList.add('intro-complete');skip.remove()};
+ if(sessionStorage.getItem('control-home-intro-seen')||matchMedia('(prefers-reduced-motion: reduce)').matches){home.classList.add('intro-complete');skip.remove()}else{sessionStorage.setItem('control-home-intro-seen','1');setTimeout(()=>{if(home.isConnected&&home.dataset.loadId===loadId){home.classList.add('intro-complete');skip.remove()}},3900)}
+ const nav=document.createElement('nav');nav.className='studio-navigation';nav.setAttribute('aria-label','项目分类');let active='all',draw=()=>{};
+ const filters=[['all','全部项目','▦'],['active','进行中','◷'],['done','阶段已完成','✓']].map(([key,label,icon])=>{const button=node('button',null,nav,'studio-nav-item');button.type='button';node('span',icon,button,'studio-nav-icon');node('span',label,button);const count=node('span','—',button,'studio-nav-count');button.onclick=()=>{active=key;draw()};return {key,button,count}});
+ const header=node('div',null,main,'studio-heading'),intro=node('div',null,header);node('h2','历史项目',intro);const library=node('button','经验库',header,'studio-library-button');library.type='button';library.onclick=()=>$('evolution-open').click();
+ const resume=node('section',null,main,'studio-resume');main.insertBefore(resume,header);resume.setAttribute('aria-label','开启新项目');node('p','正在读取最近项目…',resume);
+ const toolbar=node('div',null,main,'studio-toolbar'),label=node('div',null,toolbar,'studio-section-title');const sectionTitle=node('h2','全部项目',label);const total=node('span','—',label,'studio-total');label.classList.add('studio-accessible-heading');toolbar.append(nav);
+ const searchBox=node('label',null,toolbar,'studio-search');node('span','⌕',searchBox);const search=node('input',null,searchBox);search.type='search';search.placeholder='搜索项目名称';search.setAttribute('aria-label','搜索项目');
+ const grid=node('div',null,main,'project-grid studio-grid');grid.setAttribute('aria-live','polite');const footnote=node('p','正在整理你的项目…',main,'studio-footnote');
+ try{
+  demoStudent=await api('/demo-student',{confirmed:true});const projects=(await api('/tasks')).filter(p=>!p.student_id||p.student_id===demoStudent.id);if(home.dataset.loadId!==loadId)return;
+  const last=localStorage.getItem('control-workbench-task');projects.sort((a,b)=>(Number(b.updated_at)||0)-(Number(a.updated_at)||0));
+  const done=p=>Number(p.phases)>0&&Number(p.step)>=Number(p.phases);
+  const recent=projects.find(p=>p.id===last)||projects[0];if(recent){projects.splice(projects.indexOf(recent),1);projects.unshift(recent)}resume.replaceChildren();
+  const resumeIcon=node('div','↗',resume,'studio-resume-icon'),resumeCopy=node('div',null,resume,'studio-resume-copy');
+  node('span','新的旅程',resumeCopy);node('h2','开启新项目',resumeCopy);node('p','带上一个想法，开启下一段探索。',resumeCopy);
+  const resumeButton=node('button','开启新项目 ＋',resume,'studio-resume-button');resumeButton.onclick=createHomeProject;
+  draw=()=>{
+   filters.forEach(f=>{f.button.classList.toggle('active',active===f.key);f.button.setAttribute('aria-pressed',String(active===f.key));f.count.textContent=projects.filter(p=>f.key==='all'||(f.key==='done'?done(p):!done(p))).length});
+   const query=search.value.trim().toLocaleLowerCase(),visible=projects.filter(p=>(active==='all'||(active==='done'?done(p):!done(p)))&&String(p.title||'').toLocaleLowerCase().includes(query));
+   sectionTitle.textContent=filters.find(f=>f.key===active).button.children[1].textContent;total.textContent=visible.length;grid.replaceChildren();
+   footnote.textContent='';
+   if(!visible.length){const empty=node('div',null,grid,'studio-empty');node('span','◇',empty);node('h3',projects.length?'这里还没有匹配的项目':'还没有已有项目',empty);node('p',projects.length?'试试其他分类或搜索词。':'从上方“开启新项目”开始，创建后它会出现在这里。',empty);return}
+   visible.forEach((project,index)=>{
+    const phases=Number(project.phases)||0,step=Math.max(0,Number(project.step)||0),ratio=phases?Math.min(100,Math.round(step/phases*100)):0;
+    const card=node('article',null,grid,'studio-project');
+    let hash=0;for(const ch of String(project.id))hash=(hash*31+ch.charCodeAt(0))>>>0;card.dataset.tone=String(hash%4);card.style.setProperty('--card-index',index);
+    const cover=node('button',null,card,'studio-project-cover');cover.type='button';cover.setAttribute('aria-label','打开项目：'+(project.title||'未命名项目'));cover.onclick=()=>enterProject(project.id);
+    const art=node('span',null,cover,'studio-art');art.setAttribute('aria-hidden','true');node('span',null,art,'studio-art-orbit');const tile=node('span',null,art,'studio-art-tile');node('span','</>',tile);node('i',null,tile);node('i',null,tile);node('i',null,tile);if(project.id===recent?.id)node('span','最近打开',cover,'studio-cover-badge');
+    const content=node('div',null,card,'studio-project-body'),titleLine=node('div',null,content,'studio-project-heading');const titleButton=node('button',project.title||'未命名项目',titleLine,'studio-project-title');titleButton.type='button';titleButton.onclick=()=>enterProject(project.id);
+    const status=node('span',done(project)?'已完成':phases?'进行中':'待规划',titleLine,'studio-project-status');status.dataset.state=done(project)?'done':phases?'active':'draft';
+    const stageLine=node('div',null,content,'studio-stage-line'),stageCopy=node('div',null,stageLine,'studio-stage-copy');node('span','已完成阶段',stageCopy,'studio-stage-label');
+    const stageCount=node('strong',null,stageLine,'studio-stage-count');node('span',phases?String(Math.min(step,phases)):'—',stageCount,'studio-stage-current');node('span',phases?'/ '+phases:'待定',stageCount,'studio-stage-total');
+    const progress=node('div',null,content,'studio-progress');progress.setAttribute('role','progressbar');progress.setAttribute('aria-label','开发阶段进度');progress.setAttribute('aria-valuemin','0');progress.setAttribute('aria-valuemax','100');progress.setAttribute('aria-valuenow',String(ratio));
+    for(let i=1;i<=10;i++){const segment=node('span',null,progress,'studio-phase-segment');if(i<=Math.round(ratio/10))segment.classList.add('is-complete')}
+    const footer=node('div',null,content,'studio-project-actions');const actionLabel='继续学习';const go=node('button',null,footer,'studio-open-project');go.type='button';node('span',actionLabel,go);node('span','→',go);go.onclick=()=>enterProject(project.id);
+    const more=node('details',null,footer,'studio-more');const summary=node('summary','···',more);summary.setAttribute('aria-label','项目更多操作');const menu=node('div',null,more,'studio-menu');
+    const action=(text,fn)=>{const button=node('button',text,menu);button.type='button';button.onclick=()=>{more.open=false;fn()}};
+    action('查看教学记录',()=>showProjectEvidence(project.id));action('重命名',()=>editProjectName(project.id,project.title));
+    if(!project.student_id)action('关联到演示学生',async()=>{try{await api('/tasks/'+project.id+'/student/attach',{student_id:demoStudent.id,confirmed:true});showProjectHome()}catch(e){toast(e.message)}});
+    else node('span','共享经验库已连接',content,'studio-project-subtitle');
+   });
+  };search.oninput=draw;draw();
+ }catch(e){if(home.dataset.loadId!==loadId)return;resume.replaceChildren();node('p','暂时无法读取项目记录，请检查本地后端。',resume);grid.replaceChildren();node('p','加载失败：'+e.message,grid);node('button','重新加载',grid).onclick=showProjectHome;footnote.textContent='项目记录仍保存在本地服务中'}
 }
 
 
@@ -229,9 +286,11 @@ function messageNode(m,ch){displayedCodeRefs=m.code_refs||[];const div=document.
 function waitingNode(text){const row=document.createElement('div');row.className='waiting';row.setAttribute('role','status');row.textContent='◌ '+text;return row}
 function renderChats(){
  for(const ch of ['coding','teaching']){const el=$(ch+'-messages');const nearBottom=el.scrollHeight-el.scrollTop-el.clientHeight<100;el.replaceChildren();const messages=task.messages.filter(m=>m.channel===ch);const lastAssistant=messages.findLastIndex(m=>m.role==='assistant');messages.forEach((m,index)=>{const node=messageNode(m,ch);if(ch==='coding'&&index===lastAssistant&&task.mode==='opencode'){const allPhasesAccepted=task.plan?.length>0&&task.step>=task.plan.length;const choice=!task.plan.length&&task.plan_draft?.length?planChoiceNode():currentPhaseCheckpoint()?phaseChoiceNode():!allPhasesAccepted&&task.capabilities?.coding_reply_accept&&messages.slice(0,index).some(row=>row.role==='user'&&!['queued','needs_retry'].includes(row.queue_status))?replyChoiceNode(m):null;if(choice)node.append(choice);}el.append(node)});
-  if(ch==='coding'&&task.coding_run){const run=task.coding_run;if(['queued','running'].includes(run.status))el.append(waitingNode(run.detail||'Coding执行中'));if(run.status==='failed'){const error=document.createElement('p');error.className='reply-error';error.textContent=run.detail||'执行失败，阶段未推进';el.append(error)}}
+  if(ch==='coding'&&task.coding_run){const run=task.coding_run;if(['queued','running'].includes(run.status))el.append(waitingNode((run.detail||'Coding执行中')+' · '+Math.max(0,Math.floor(Date.now()/1000-run.started_at))+' 秒'+(run.model_rounds?' · 已完成 '+run.model_rounds+' 次模型生成':'')+(run.completed_tools?' · '+run.completed_tools+' 次工具操作完成':'')));if(run.status==='failed'){const error=document.createElement('p');error.className='reply-error';error.textContent=run.detail||'执行失败，阶段未推进';el.append(error)}}
   if(ch==='teaching'){
    const run=task.teaching_run;
+   if(run?.experience_context){const experience=run.experience_context,info=document.createElement('p');info.className='plan-choice-note';info.textContent='本轮已读取项目教学经验库 v'+experience.revision+' · '+(experience.entries.map(entry=>(entry.title||entry.id)+' r'+entry.revision).join('、')||'当前模式或问题未选中条目');el.append(info)}
+   if(run?.context_materials&&['queued','running'].includes(run.status)){const materials=run.context_materials;el.append(waitingNode('材料准备完成：'+materials.source_files+' 个文件、'+materials.source_lines+' 行重点源码；教学经验和知识已就绪'))}
    if(run?.partial_reply&&['queued','running','failed'].includes(run.status)){
     const preview=messageNode({role:'assistant',engine:'model',content:run.partial_reply},'teaching');preview.classList.add('streaming-reply');preview.setAttribute('aria-label',run.status==='failed'?'未完成的教学回复':'正在生成的教学回复');el.append(preview);
    }
@@ -391,10 +450,19 @@ function replyChoiceNode(message){
  const id=task.messages.indexOf(message),taskId=task.id,requestId=newRequestId();
  const accepted=task.coding_reply_acceptances?.some(r=>r.message_id===id),finished=task.plan.length&&task.step>=task.plan.length;
  const button=document.createElement('button');button.type='button';button.className='plan-choice approve';
- button.textContent=finished?'✓ 阶段均已验收':accepted?'✓ 已确认':'✓ 这版可以';
+ button.textContent=finished?'✓ 阶段均已验收':accepted?'✓ 回复已确认':'✓ 确认这条回复';
  button.disabled=!!(accepted||finished||busy||['coding_run'].some(k=>['queued','running'].includes(task[k]?.status)));
  button.onclick=()=>perform(()=>api('/tasks/'+taskId+'/coding/reply-accept',{message_id:id,expected_content:message.content,request_id:requestId}));
- row.append(button);return row;
+ row.append(button);
+ if(!finished&&task.plan.length&&!currentPhaseCheckpoint()){
+  const run=document.createElement('button');run.type='button';run.className='plan-choice approve';run.textContent=task.coding_run?.status==='failed'?'重试执行当前阶段':'执行当前阶段';
+  run.disabled=!!(busy||['queued','running'].includes(task.coding_run?.status));
+  const expectedStep=task.step,instruction=task.plan[expectedStep];
+  run.onclick=()=>perform(()=>api('/tasks/'+taskId+'/steps/run',{confirmed:true,expected_step:expectedStep,instruction}));
+  row.append(run);
+ }
+ const note=document.createElement('p');note.className='plan-choice-note';note.textContent=accepted?'这条回复已确认。继续开发请点击“执行当前阶段”，或发送调整要求。':'确认回复只记录你的认可；执行阶段需要单独点击。';row.append(note);
+ return row;
 }
 
 function currentPhaseCheckpoint(){
@@ -525,3 +593,10 @@ function phaseChoiceNode(){
  const release=()=>{if(!held)return;const element=held;held=null;element.classList.remove('is-scroll-dragging');reveal(element)};
  window.addEventListener('pointerup',release,true);window.addEventListener('pointercancel',release,true);window.addEventListener('blur',release);
 })();
+
+// Connect the teaching-trial panel to the workbench project lifecycle.
+window.canSwitchControlProject=()=>!busy&&!hasCodeChanges()&&![task?.coding_run?.status,task?.teaching_run?.status].some(status=>['queued','running'].includes(status));
+window.addEventListener('control:open-teaching-example',event=>{
+ const id=event.detail?.id;
+ if(id)enterProject(id);
+});

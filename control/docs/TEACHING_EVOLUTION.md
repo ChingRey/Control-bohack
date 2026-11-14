@@ -1,3 +1,5 @@
+> 2026-11-15：当前单用户跨项目经验库和v2逐项证据评分见 [SHARED_EXPERIENCE_LIBRARY.md](SHARED_EXPERIENCE_LIBRARY.md)。下文项目隔离/候选规则为历史版本。
+
 # Teaching Agent 经验进化初版
 
 本次新增真实模型适配的教学经验闭环，与旧 `teaching/evolve` Mock端口分开。代码在 `agents/teaching_evolution.py`，无新增第三方依赖，不训练模型权重，不改Coding执行权限。当前是工程闭环，不是已证明有效的教学算法。

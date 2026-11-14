@@ -19,3 +19,7 @@ data/write-verification/
 
 # Local sessions, verification caches and runtime logs must never be published.
 data/
+
+# Local task backups and host-only credentials.
+tmp/
+host-models.json

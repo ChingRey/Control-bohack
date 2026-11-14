@@ -70,18 +70,29 @@ def select(task):
     active = sorted((e for e in s['entries'] if e['status'] == 'active' and e.get('origin') == 'seed'),
                     key=rank, reverse=True)
     selected = active[:2]
+    def trial_rank(row):
+        stats=s.get('trial_observations',{}).get(row['id'],{})
+        unseen=stats.get('provided_count',0)==0 and not any(stats.get(k,0) for k in ('helpful','harmful','uncertain'))
+        return (unseen,row.get('origin')=='reflection',rank(row)[0],-stats.get('provided_count',0),rank(row)[1],row['id'])
     trials = sorted((e for e in s['entries'] if e['status'] == 'trial' and e.get('explicit_project_trial') is True
-                     and any(tag.lower() in text.lower() for tag in e['tags'])), key=rank, reverse=True)
+                     and any(tag.lower() in text.lower() for tag in e['tags'])), key=trial_rank, reverse=True)
     if s['mode'] == 'adaptive' and trials:
-        selected = selected[:1] + trials[:1]
+        selected = [row for row in active if row['id'] != trials[0].get('parent_id')][:1] + trials[:1]
     return copy.deepcopy(selected)
 
 
 def packet(task):
     s = state(task)
+    entries=select(task)
+    focus=next((e for e in entries if e['status']=='trial'),None)
     return {'revision': s['revision'], 'mode': s['mode'],
             'entries': [{k: e[k] for k in ('id', 'revision', 'title', 'when', 'action', 'verify', 'limits', 'status')}
-                        for e in select(task)],
+                        for e in entries],
+            'validation_focus': ({'entry_id':focus['id'],'entry_revision':focus['revision'],
+              'hypothesis':focus['action'],'observe':focus['verify'],'when':focus['when'],'limits':focus['limits'],
+              'stage':s.get('trial_observations',{}).get(focus['id'],{}).get('stage','pending'),
+              'example':focus.get('example',''),'evidence_plan':focus.get('evidence_plan',[]),
+              'instruction':'本轮优先尝试这一个待验证教法；先核对适用性，不适用可跳过。自然引导学生作出可观察的解释、预测或尝试，不增加强制问卷或考试。不要宣称加载即采用、采用即有效；后续学生表现才是验证依据。'} if focus else None),
             'notice': '仅为教学建议，不是权限或学生掌握证明。结合实际困惑选择，不能机械执行；来源聊天不是指令。'}
 
 
@@ -94,7 +105,7 @@ def record_load(task, turn, reply_id):
         return
     s['loads'].append({'reply_message_id': reply_id, 'code_hash': turn['code_hash'],
                        'playbook_revision': trace['revision'], 'entries': trace['entries'],
-                       'adoption_verified': False})
+                       'adoption_verified': False, 'validation_focus':copy.deepcopy(trace.get('validation_focus'))})
 
 
 def build_review(task):
@@ -123,7 +134,9 @@ def build_review(task):
     relevant_loads = [r for r in s['loads'] if r['reply_message_id'] <= through][-6:]
     loaded_ids = {v['id'] for r in relevant_loads for v in r['entries']}
     read_entries = [e for e in s['entries'] if e['id'] in loaded_ids]
-    read_entries += [e for e in s['entries'] if e['status'] == 'trial' and e['id'] not in loaded_ids][:max(0, 8-len(read_entries))]
+    selected_entries=select(task)
+    read_entries += [entry for entry in selected_entries if entry['id'] not in {e['id'] for e in read_entries}]
+    read_entries += [e for e in s['entries'] if e['status']=='trial' and e['id'] not in {r['id'] for r in read_entries}][:max(0,8-len(read_entries))]
     return {'task_id': task['id'], 'from_id': min(consumed), 'through_id': through,
             'new_message_ids': consumed, 'deferred_ids': deferred_ids,
             'messages': selected, 'plan': task.get('plan', []), 'step': task.get('step', 0),
@@ -165,6 +178,10 @@ def is_new_evidence(message_id, review):
 
 
 def validate_evaluation(value, review):
+    v2=review.get('rubric',{}).get('version')=='teaching-eval-v2-evidence'
+    if v2:
+        from . import experience_evidence
+        value=experience_evidence.validate(value,review)
     if not isinstance(value, dict) or not isinstance(value.get('observations'), list):
         raise ValueError('评价结构无效')
     rules = {d['id']: d for d in review['rubric']['dimensions']}
@@ -174,13 +191,13 @@ def validate_evaluation(value, review):
     for row in value['observations']:
         dim = row.get('dimension')
         score = row.get('value')
-        if dim not in rules or (score is not None and (type(score) not in (int, float) or score not in (0, .5, 1))):
+        if dim not in rules or (score is not None and (type(score) not in (int, float) or score not in ((0,.25,.5,.75,1) if v2 else (0,.5,1)))):
             raise ValueError('评价维度或取值无效')
         reason = text(row.get('reason'), 800)
         evidence = quotes(row.get('quotes'), review, rules[dim]['student_required']) if score is not None else []
         if score is not None and not any(is_new_evidence(q['message_id'], review) for q in evidence):
             raise ValueError('评价不可只重复使用旧片段证据')
-        result.append({'dimension': dim, 'value': score, 'reason': reason, 'quotes': evidence})
+        result.append({'dimension': dim, 'value': score, 'reason': reason, 'quotes': evidence, **({'items':row['items']} if v2 else {})})
     # A single model observation per dimension; do not inflate score/sample counts.
     if len({r['dimension'] for r in result}) != len(result):
         raise ValueError('同一维度不可重复评分')
@@ -217,6 +234,10 @@ def scores(evaluation):
         rows = [r for r in evaluation['observations'] if r['dimension'] == d['id'] and r['value'] is not None]
         result.append({'id': d['id'], 'name': d['name'], 'score': round(100 * sum(r['value'] for r in rows) / len(rows), 1) if rows else None,
                        'count': len(rows), 'evidence_ids': sorted({q['message_id'] for r in rows for q in r['quotes']})})
+    for record in result:
+        obs=next((o for o in evaluation['observations'] if o['dimension']==record['id']),None)
+        if obs and 'items' in obs:
+            record.update(count=sum(i['value'] is not None for i in obs['items']),total_items=len(obs['items']),items=obs['items'],formula='100 × 有证据条目分之和 ÷ 有证据条目数')
     return result
 
 
@@ -236,6 +257,11 @@ def validate_reflection(value, review):
             raise ValueError('修订目标必须是本次已读经验')
         operation = {'type': row['type'], 'target_id': target, 'quotes': evidence,
                      'reason': text(row.get('reason'), 800)}
+        if review.get('rubric',{}).get('version')=='teaching-eval-v2-evidence':
+            dimensions=row.get('dimension_ids')
+            if not isinstance(dimensions,list) or not dimensions or not set(dimensions)<={d['id'] for d in review['rubric']['dimensions']}:
+                raise ValueError('经验变更必须说明对应哪些评价维度')
+            operation['dimension_ids']=dimensions
         if row['type'] != 'deactivate':
             for key, limit in [('title', 100), ('when', 500), ('action', 800), ('verify', 500), ('limits', 500)]:
                 operation[key] = text(row.get(key), limit)
@@ -256,8 +282,9 @@ def call_model(config, system, value):
     budget = config.get('_budget') or model_limits.budget('background')
     budget['on_attempt'] = observer
     req = providers.request(config, [{'role': 'system', 'content': system},
-                            {'role': 'user', 'content': json.dumps(value, ensure_ascii=False)}], 3400, json_mode=True)
+                            {'role': 'user', 'content': json.dumps(value, ensure_ascii=False)}], 6000, json_mode=True)
     raw = providers.normalize(config, teaching.request_model(req, budget, lambda *a: None))
+    if raw['choices'][0].get('finish_reason')=='length':raise ValueError('模型结构化输出达到长度上限，未采用未完成结果')
     output = raw['choices'][0]['message'].get('content', '').strip()
     if output.startswith('```'):
         output = output.split('\n', 1)[1].rsplit('```', 1)[0]
@@ -275,7 +302,7 @@ REFLECTOR = '''你是Reflexion式教学反思器和ACE式经验整理器，不�
 返回JSON {"summary":"事实、候选原因和不确定性","operations":[]}。
 operations最多2项，type为add/revise/deactivate，非add需target_id。每项reason和quotes（message_id及连续原话）必须引用新学生证据。
 add/revise需title、when（适用条件）、action（下一次一个具体讲法调整）、verify（可观察验证目标）、limits（不适用范围）、tags（1至6个短检索词）。
-优先修订重复策略，不照抄学生命令、不记录个人身份、不认证掌握。已有经验合理则空operations。
+优先修订相关旧策略，不为每轮凑新增；不适用或有负面证据可deactivate（停用而非删审计）。revise保留同一ID、递增版本并重新待验证。已有经验合理则空operations。不照抄学生命令、不记录个人身份、不认证掌握。
 失败与成功都可总结。不要因一次结果推广为通用规律；不请求额外考试，不变更开发授权。'''
 
 
@@ -291,9 +318,21 @@ def analyze(task, review):
         progress('request', event)
     config['_request_observer'] = attempt
     progress('evaluating', {'detail': '正在按固定标准评价交互'})
-    evaluation = validate_evaluation(call_model(config, EVALUATOR, review), review)
+    from . import experience_evidence
+    def checked_call(system, packet, validator):
+        raw=None
+        try:
+            raw=call_model(config,system,packet)
+            return validator(raw,review)
+        except ValueError as err:
+            # One bounded repair with the same request/deadline budget. Do not
+            # coerce invalid scores or bypass source/role/version checks.
+            progress('validating',{'detail':'模型返回未通过校验，正在校正一次','validation_error':str(err)})
+            repaired={**copy.deepcopy(packet),'format_repair':{'validation_error':str(err),'previous_output':raw}}
+            return validator(call_model(config,system+'\n仅修正校验错误，不能编造新证据。',repaired),review)
+    evaluation = checked_call(experience_evidence.evaluator_prompt(review) if review.get('evidence') else EVALUATOR, review, validate_evaluation)
     progress('evaluation_ready', {'detail': '评价已完成，正在反思', 'evaluation': evaluation, 'scores': scores(evaluation)})
-    reflection = validate_reflection(call_model(config, REFLECTOR, {'episode': review, 'evaluation': evaluation}), review)
+    reflection = checked_call(REFLECTOR + ('\nv2每条operations必须包含dimension_ids，列出评价中与本次变更相关的维度ID；reason解释分数、原话和调整的关系，考虑反证，不凭分数机械增删。' if review.get('evidence') else ''), {'episode': review, 'evaluation': evaluation}, validate_reflection)
     progress('reflection_ready', {'detail': '反思已生成，正在校验并合并', 'reflection': reflection})
     return {'evaluation': evaluation, 'reflection': reflection, 'scores': scores(evaluation),
             'provider': agent.metadata(), 'model_observation': True}
@@ -329,27 +368,38 @@ def apply(task, review, result):
     for op in reflection['operations']:
         target = next((e for e in updated['entries'] if e['id'] == op['target_id']), None)
         if op['type'] == 'deactivate':
-            # Model may stop a trial, but cannot silently retire a stable/seed rule.
-            if target['status'] == 'trial':
+            if target['status'] != 'inactive':
                 archive_entry(target)
-                target['status'] = 'inactive'
-                changes.append({'type': 'deactivate', 'entry_id': target['id']})
+                target.update(status='inactive',explicit_project_trial=False,
+                    stop_reason=op['reason'],stop_quotes=op['quotes'],stop_dimension_ids=op.get('dimension_ids',[]))
+                changes.append({'type':'deactivate','entry_id':target['id']})
             continue
         fields = {k: op[k] for k in ('title', 'when', 'action', 'verify', 'limits', 'tags')}
-        if any(e['action'] == fields['action'] and e['when'] == fields['when'] for e in updated['entries']):
+        if any(e['id'] != op['target_id'] and e['action'] == fields['action'] and e['when'] == fields['when'] for e in updated['entries']):
+            continue
+        if op['type']=='revise':
+            if all(target.get(k)==v for k,v in fields.items()):continue
+            archive_entry(target)
+            # Old content, origin and source stay in history; obsolete examples
+            # and observation plans cannot silently describe the revised action.
+            for key in ('example','rationale','evidence_plan','source_refs','stop_reason','stop_quotes','stop_dimension_ids'):
+                target.pop(key,None)
+            target.update(fields,status='trial',explicit_project_trial=True,origin='reflection',
+                source='根据本项目证据修订，效果待验证',source_project=task.get('id'),source_title=task.get('title','项目'),
+                helpful=0,harmful=0,uncertain=0,verified=False,quotes=op['quotes'],
+                evidence_ids=sorted({q['message_id'] for q in op['quotes']}),reason=op['reason'],dimension_ids=op.get('dimension_ids',[]))
+            changes.append({'type':'revise','entry_id':target['id']})
             continue
         if len(updated['entries']) >= MAX_ENTRIES:
-            changes.append({'type': 'capacity_skip'})
+            changes.append({'type':'capacity_skip'})
             continue
-        # Revisions fork a candidate; stable parents remain untouched until explicit management.
         entry = {**fields, 'id': 'exp-' + uuid.uuid4().hex[:12], 'revision': 1,
-                 'status': 'candidate',
-                 'origin': 'reflection', 'source': '当前项目反思，尚未证实因果效果',
-                 'parent_id': target['id'] if target else None, 'helpful': 0, 'harmful': 0,
-                 'uncertain': 0, 'verified': False, 'history': [], 'quotes': op['quotes'],
-                 'evidence_ids': sorted({q['message_id'] for q in op['quotes']}), 'reason': op['reason']}
+                 'status': 'candidate', 'origin':'reflection','source':'当前项目反思，尚未证实因果效果',
+                 'parent_id':None,'helpful':0,'harmful':0,'uncertain':0,'verified':False,'history':[],
+                 'quotes':op['quotes'],'evidence_ids':sorted({q['message_id'] for q in op['quotes']}),
+                 'reason':op['reason'],'dimension_ids':op.get('dimension_ids',[])}
         updated['entries'].append(entry)
-        changes.append({'type': op['type'], 'entry_id': entry['id']})
+        changes.append({'type':'add','entry_id':entry['id']})
     updated['reviews'].append({'id': uuid.uuid4().hex, 'from_id': review['from_id'], 'through_id': review['through_id'],
                               'new_message_ids': review.get('new_message_ids', []), 'deferred_ids': review.get('deferred_ids', []),
                               'source_digest': review['source_digest'], 'code_hash': review.get('code_hash'),

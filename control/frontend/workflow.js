@@ -10,7 +10,7 @@ async function saveMaterial(confirmed){const ok=await perform(()=>api('/tasks/'+
 $('workflow-draft').onclick=()=>saveMaterial(false);$('workflow-confirm').onclick=()=>saveMaterial(true);
 $('workflow-stage-save').onclick=()=>perform(()=>api('/tasks/'+task.id+'/workflow/stage',{stage:Number($('workflow-stage').value),expected_revision:task.workflow.revision}));
 function listVersions(){$('versions-list').replaceChildren();for(const version of [...(task.version_history||[])].reverse()){const row=document.createElement('p'),button=document.createElement('button');row.append(document.createTextNode(version.label+' · '+version.created_at+' '));button.textContent='恢复这个版本';button.onclick=async()=>{if(!confirm('恢复项目文件？当前代码会自动保存为版本，聊天和学习记录保留。'))return;const current=await api('/tasks/'+task.id+'/versions/current',{});const ok=await perform(()=>api('/tasks/'+task.id+'/versions/restore',{version_id:version.id,expected_hash:current.hash}));if(ok)listVersions()};row.append(button);$('versions-list').append(row)}}
-$('project-versions').onclick=()=>{if(!task)return;listVersions();$('versions-dialog').showModal()};
+
 $('version-save').onclick=async()=>{if(await perform(()=>api('/tasks/'+task.id+'/versions/save',{label:'手动保存 '+new Date().toLocaleString()})))listVersions()};
 $('project-diff').onclick=()=>{diffHighlightEnabled=!diffHighlightEnabled;showView('code');paintRowHighlight()};
 

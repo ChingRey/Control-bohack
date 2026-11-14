@@ -1,6 +1,33 @@
-"""Project names derived from the first explicit Coding request, with manual override."""
+"""New repositories are named at creation; legacy auto titles remain compatible."""
 import re
 GENERIC={'','新项目','未命名项目','待办事项 · 示例教程','OpenCode · 分阶段开发（待连接模型）','OpenCode · 分阶段开发'}
+
+def chinese_number(number):
+ if number>=10000:return str(number)
+ digits='零一二三四五六七八九';result='';zero=False
+ for unit,label in ((1000,'千'),(100,'百'),(10,'十'),(1,'')):
+  value,number=divmod(number,unit)
+  if value:
+   if zero:result+='零'
+   result+=digits[value]+label;zero=False
+  elif result and number:zero=True
+ return result[1:] if result.startswith('一十') else result
+
+def initialize(c,task,value=''):
+ """Allocate blank names transactionally; never reuse a number after a rename."""
+ if not isinstance(value,str):raise ValueError('仓库名称必须是文字')
+ if value.strip():
+  rename(task,value);return
+ c.execute('CREATE TABLE IF NOT EXISTS project_name_counters (name TEXT PRIMARY KEY,value INTEGER NOT NULL)')
+ row=c.execute("SELECT value FROM project_name_counters WHERE name='unnamed'").fetchone()
+ number=row[0] if row else 0
+ import json
+ used={json.loads(raw).get('title') for raw, in c.execute('SELECT body FROM tasks')}
+ while True:
+  number+=1;name='未命名仓库'+chinese_number(number)
+  if name not in used:break
+ c.execute("INSERT OR REPLACE INTO project_name_counters VALUES ('unnamed',?)",(number,))
+ task.update(title=name,title_mode='manual',unnamed_repository_number=number)
 def extract(text):
  if not isinstance(text,str):return None
  text=text.strip()
@@ -26,5 +53,5 @@ def update(task):
  return False
 
 def rename(task,value):
- if not isinstance(value,str) or not 1<=len(value.strip())<=60 or any(ord(c)<32 for c in value):raise ValueError('项目名称需为1至60个字符，不能包含换行')
+ if not isinstance(value,str) or not 1<=len(value.strip())<=60 or any(ord(c)<32 for c in value):raise ValueError('仓库名称需为1至60个字符，不能包含换行')
  task.update(title=value.strip(),title_mode='manual')

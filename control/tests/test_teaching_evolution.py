@@ -48,7 +48,7 @@ class ExperienceTests(unittest.TestCase):
         self.assertTrue(all(not r['verified'] for r in e.state(t)['entries']))
         s=e.state(t);e.manage(t,{'action':'options','mode':'off','auto':False,'expected_revision':0})
         self.assertEqual(e.packet(t)['entries'],[])
-        self.assertEqual(e.state(task())['mode'],'adaptive')
+        self.assertEqual(e.state(task())['mode'],'observe');self.assertFalse(e.state(task())['auto'])
 
     def test_validation_rejects_invented_and_teacher_only_evidence(self):
         p=e.build_review(task());v=evaluation();v['observations'][0]['quotes'][0]['quote']='invented'
@@ -69,13 +69,14 @@ class ExperienceTests(unittest.TestCase):
         value['observations']*=2
         with self.assertRaises(ValueError):e.validate_evaluation(value,p)
 
-    def test_delta_forks_seed_keeps_evidence_and_versions_and_is_idempotent(self):
+    def test_delta_revises_same_id_keeps_evidence_and_versions_and_is_idempotent(self):
         t=task();p=e.build_review(t);out=result();out['reflection']=reflection('revise')
         before=copy.deepcopy(t);e.apply(t,p,out);s=e.state(t)
-        self.assertEqual(s['entries'][0]['action'],before['teaching_evolution']['entries'][0]['action'])
-        candidate=s['entries'][-1];self.assertEqual(candidate['status'],'trial')
-        self.assertEqual(candidate['parent_id'],'seed-example');self.assertFalse(candidate['verified'])
-        self.assertEqual(s['entries'][0]['helpful'],1);self.assertEqual(s['revision'],1)
+        revised=s['entries'][0];self.assertEqual(revised['id'],'seed-example')
+        self.assertEqual(revised['action'],reflection('revise')['operations'][0]['action'])
+        self.assertEqual(revised['status'],'trial');self.assertFalse(revised['verified'])
+        self.assertEqual(revised['history'][-1]['action'],before['teaching_evolution']['entries'][0]['action'])
+        self.assertEqual(revised['helpful'],0);self.assertEqual(s['revision'],1)
         frozen=copy.deepcopy(t)
         with self.assertRaises(ValueError):e.apply(t,p,out)
         self.assertEqual(t,frozen)
@@ -95,11 +96,17 @@ class ExperienceTests(unittest.TestCase):
         self.assertEqual(s['mode'],'observe');self.assertFalse(s['auto']);self.assertEqual(s['revision'],2)
         with self.assertRaises(ValueError):e.manage(t,{'action':'options','mode':'off','auto':False,'expected_revision':1})
 
-    def test_selection_has_at_most_one_trial_and_stopped_never_loads(self):
-        t=task();p=e.build_review(t);e.apply(t,p,result());selected=e.packet(t)['entries']
-        self.assertEqual(len([r for r in selected if r['status']=='trial']),1)
+    def test_selection_requires_explicit_trial_and_stopped_never_loads(self):
+        t=task();e.state(t)['mode']='adaptive';p=e.build_review(t);e.apply(t,p,result())
         sid=e.state(t)['entries'][-1]['id']
-        e.manage(t,{'action':'status','entry_id':sid,'status':'inactive','expected_revision':1})
+        self.assertNotIn(sid,[r['id'] for r in e.packet(t)['entries']])
+        with self.assertRaises(ValueError):
+            e.manage(t,{'action':'status','entry_id':sid,'status':'active','expected_revision':1})
+        e.state(t)['entries'][-1]['status']='trial'  # persisted legacy auto-trial
+        self.assertNotIn(sid,[r['id'] for r in e.packet(t)['entries']])
+        e.manage(t,{'action':'status','entry_id':sid,'status':'trial','expected_revision':1})
+        self.assertIn(sid,[r['id'] for r in e.packet(t)['entries']])
+        e.manage(t,{'action':'status','entry_id':sid,'status':'inactive','expected_revision':2})
         self.assertNotIn(sid,[r['id'] for r in e.packet(t)['entries']])
 
     def test_observe_retains_candidates_without_trialing(self):
@@ -109,13 +116,14 @@ class ExperienceTests(unittest.TestCase):
 
     def test_two_negative_trials_stop_without_promoting_other_entries(self):
         t=task();p=e.build_review(t);e.apply(t,p,result());trial=e.state(t)['entries'][-1]
+        e.manage(t,{'action':'status','entry_id':trial['id'],'status':'trial','expected_revision':1})
         for n in range(2):
             reply=len(t['messages']);t['messages'].extend([
                 {'role':'assistant','channel':'teaching','content':'比较一下状态前后。'},
                 {'role':'user','channel':'teaching','content':'还是把文字当状态，我无法区分。'}])
-            e.state(t)['loads'].append({'reply_message_id':reply,'entries':[{'id':trial['id'],'revision':1}]})
+            e.state(t)['loads'].append({'reply_message_id':reply,'entries':[{'id':trial['id'],'revision':e.state(t)['entries'][-1]['revision']}]})
             packet=e.build_review(t)
-            negative={'observations':[],'feedback':[{'entry_id':trial['id'],'entry_revision':1,'outcome':'harmful',
+            negative={'observations':[],'feedback':[{'entry_id':trial['id'],'entry_revision':e.state(t)['entries'][-1]['revision'],'outcome':'harmful',
                 'reason':'夹具：已尝试但仍混淆，记录负面观察。','quotes':[
                     {'message_id':reply,'quote':'比较一下状态前后。'},
                     {'message_id':reply+1,'quote':'还是把文字当状态，我无法区分。'}]}]}
@@ -147,7 +155,13 @@ class ExperienceTests(unittest.TestCase):
 class ExperienceIntegrationTests(unittest.TestCase):
     def setUp(self):
         self.h=fixture.CheckpointIntegrationTests();self.h.setUp();self.addCleanup(self.h.doCleanups)
-        t=b.load(self.h.task['id']);source=task();t['messages']=source['messages'];t['teaching_evolution']=source['teaching_evolution'];b.save(t)
+        t=b.load(self.h.task['id']);source=task();t['messages']=source['messages'];t['teaching_evolution']=source['teaching_evolution']
+        with b.connection() as c:b.experience_library.attach(c,t)
+        self.base_revision=e.state(t)['revision'];b.save(t)
+
+    def shared_result(self,task,review,*args):
+        from test_shared_experience import analyzed
+        return analyzed(review)
 
     def wait_review(self):
         for _ in range(300):
@@ -157,30 +171,30 @@ class ExperienceIntegrationTests(unittest.TestCase):
         self.fail('reflection did not finish')
 
     def test_api_persists_review_and_restore_without_touching_code(self):
-        with patch.dict(os.environ,{'TEACHING_MODE':'model'}),patch.object(e,'analyze',return_value=result()):
+        with patch.dict(os.environ,{'TEACHING_MODE':'model'}),patch.object(e,'analyze',side_effect=self.shared_result):
             code,_=self.h.call(self.h.path+'/teaching/experience-review',{})
             self.assertEqual(code,202);t=self.wait_review()
         self.assertEqual(e.state(t)['run']['status'],'completed');self.assertEqual(len(e.state(t)['reviews']),1)
-        self.assertEqual(self.h.call(self.h.path+'/teaching/experience-manage',{'action':'restore','target_revision':0,'expected_revision':1})[0],200)
-        reopened=b.load(t['id']);self.assertEqual(e.state(reopened)['revision'],2)
+        self.assertEqual(self.h.call(self.h.path+'/teaching/experience-manage',{'action':'restore','target_revision':0,'expected_revision':self.base_revision+1})[0],200)
+        reopened=b.load(t['id']);self.assertEqual(e.state(reopened)['revision'],self.base_revision+2)
         self.assertEqual(reopened['messages'],task()['messages']);self.assertEqual(b.read_project_files(t['id']),{})
 
     def test_background_accepts_append_without_overwriting_new_chat(self):
         entered=threading.Event();release=threading.Event();self.addCleanup(release.set)
-        def analyze(*args):entered.set();release.wait(3);return result()
+        def analyze(*args):entered.set();release.wait(3);return self.shared_result(*args)
         with patch.dict(os.environ,{'TEACHING_MODE':'model'}),patch.object(e,'analyze',side_effect=analyze):
             self.h.call(self.h.path+'/teaching/experience-review',{});self.assertTrue(entered.wait(2))
             with b.task_lock(self.h.task['id']):
                 t=b.load(self.h.task['id']);t['messages'].append({'role':'user','channel':'teaching','content':'new conversation'});b.save(t)
             release.set();t=self.wait_review()
-        self.assertEqual(e.state(t)['run']['status'],'completed');self.assertEqual(e.state(t)['revision'],1)
+        self.assertEqual(e.state(t)['run']['status'],'completed');self.assertEqual(e.state(t)['revision'],self.base_revision+1)
         self.assertEqual(t['messages'][-1]['content'],'new conversation')
 
     def test_failure_preserves_state_and_sample_never_mocks_success(self):
         self.assertEqual(self.h.call(self.h.path+'/teaching/experience-review',{})[0],400)
         with patch.dict(os.environ,{'TEACHING_MODE':'model'}),patch.object(e,'analyze',side_effect=RuntimeError('private internal error')):
             self.h.call(self.h.path+'/teaching/experience-review',{});t=self.wait_review()
-        self.assertEqual(e.state(t)['run']['status'],'failed');self.assertEqual(e.state(t)['revision'],0)
+        self.assertEqual(e.state(t)['run']['status'],'failed');self.assertEqual(e.state(t)['revision'],self.base_revision)
         self.assertNotIn('private internal error',json.dumps(t))
 
     def test_restart_marks_reflection_failed_without_replaying(self):
@@ -189,7 +203,12 @@ class ExperienceIntegrationTests(unittest.TestCase):
 
     def test_successful_chat_automatically_schedules_reflection_after_organizer(self):
         entered=threading.Event()
-        def analyze(*args):entered.set();return result()
+        t=b.load(self.h.task['id'])
+        with b.connection() as c:
+            b.experience_library.manage(c,{'action':'options','mode':'adaptive','auto':True,'expected_revision':self.base_revision})
+            b.experience_library.attach(c,t)
+        b.save(t)
+        def analyze(*args):entered.set();return self.shared_result(*args)
         with patch.dict(os.environ,{'TEACHING_MODE':'model'}),patch.object(teaching,'project_chat',return_value='本轮讲解。'),patch.object(b.workflow_records,'organize',return_value=[]),patch.object(e,'analyze',side_effect=analyze):
             code,_=self.h.call(self.h.path+'/chat/send',{'channel':'teaching','message':'继续解释状态','request_id':'auto-reflection'})
             self.assertEqual(code,202);self.assertTrue(entered.wait(3));t=self.wait_review()
