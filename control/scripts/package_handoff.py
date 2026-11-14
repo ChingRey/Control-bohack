@@ -12,7 +12,7 @@ files = []
 for directory in ('agents', 'frontend', 'docs', 'scripts', 'tests'):
     files.extend(p for p in (root / directory).rglob('*') if p.is_file() and not p.is_symlink() and not p.name.startswith('.env')
                  and '__pycache__' not in p.parts and p.suffix not in ('.pyc', '.pyo'))
-files.extend(root / p for p in ('backend.py', 'AGENTS.md', '.gitignore', '启动工作台.cmd'))
+files.extend(root / p for p in ('backend.py', 'AGENTS.md', '.gitignore', '启动工作台.cmd', 'requirements.txt'))
 tool = root / 'tools/opencode-next'
 files.extend(tool.glob('package*.json'))
 exe = tool / 'node_modules/opencode-windows-x64/bin/opencode.exe'
@@ -37,13 +37,14 @@ readme = '''# Control 当前融合交付版（2026-11-14）
 
 ## 启动（Windows x64）
 1. 完整解压到可写目录，安装 Python 3.10+。
-2. 双击“启动工作台.cmd”，打开 http://127.0.0.1:8772/ 。
+2. 先运行 `python -m pip install -r requirements.txt`，再双击“启动工作台.cmd”，打开 http://127.0.0.1:8772/ 。
 3. 或在本目录运行 python -X utf8 backend.py --port 8782，然后访问对应端口。
 4. 附 OpenCode 1.18.34 Windows x64执行器，常规启动无需安装npm依赖。
 5. 页面分别配置Coding和Teaching的服务商、模型与自己账户的API Key；模型请求需要联网。
 6. Key只在后台进程内保存，重启后重填。请停止旧后端再启动本包，避免新前端连接旧接口。
 
 ## 接口与功能边界
+- 「教学进化试验」使用待办案例跑通补练、候选试用、判定和复用，详见 docs/TEACHING_STRATEGY_TRIALS.md。
 - V0.2.1 decide()与teach()已接入；独立教学接口需要显式启用，不表示普通自然聊天每轮都调用decide。
 - V0.2.1 evaluate()/evolve()仍为Mock联调；新的经验反思使用teaching/experience-review，不把Mock当真实效果。
 - 模型超时可在设置页调整，默认前台60/120秒、后台60/180秒。

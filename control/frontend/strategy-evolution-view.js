@@ -1,7 +1,7 @@
 (() => {
   const labels = {
     baseline:'基线', candidate:'等待试用', testing:'收集中', validated:'已通过试点门槛',
-    rejected:'未通过', retired:'已被替换'
+    rejected:'未通过', retired:'已被替换', withdrawn:'已撤回'
   };
   const dimensions = {
     knowledge:'知识理解', judgment:'工程判断', ai_collaboration:'AI 协作指导',
@@ -9,6 +9,10 @@
   };
   const caseName = ['普通文本','空字符串','纯空格','制表符与换行','两端有空白的正常文本'];
   const versionName = version => 'v'+version;
+  const methods = {verification:'逐项对照验证',judgment:'处理顺序练习',knowledge:'空白概念拆解',
+    ai_collaboration:'改写交付要求',transfer:'迁移预演'};
+  const teachingState = {baseline:'基线教学',testing:'候选试用',validated:'验证后正式采用'};
+  const method = version => methods[version?.focus] || '运行后核对';
   const format = value => new Intl.NumberFormat('zh-CN',{maximumFractionDigits:2}).format(value);
   const mean = values => values.reduce((sum,value)=>sum+value,0)/values.length;
   const sign = value => (value>0?'+':'')+format(value);
@@ -58,9 +62,11 @@
   function diagnosis(source, version) {
     if(!source) return version.observation;
     const weak=source.weaknesses.map(key=>dimensions[key]||key);
-    const failed=source.observed?.post?.failed_cases.map(i=>caseName[i]).filter(Boolean)||[];
+    const observed=source.observed?.post;
+    const linked=source.benchmark_version==='linked-list-delete-rubric-v1';
+    const failed=linked?(observed?.case_gaps||[]):(observed?.failed_cases.map(i=>caseName[i]).filter(Boolean)||[]);
     const evidence=[];
-    if(failed.length) evidence.push('独立后测没通过这些用例：'+failed.join('、'));
+    if(failed.length) evidence.push((linked?'独立后测缺少有效断言：':'独立后测没通过这些用例：')+failed.join('、'));
     if(!failed.length&&weak.length) evidence.push('独立后测薄弱项：'+weak.join('、'));
     if(source.transfer_passed===false) evidence.push('迁移 '+source.transfer_level+'/4，未通过');
     return evidence.length?evidence.join('。')+'。':version.observation;
@@ -76,7 +82,10 @@
        average(before,'pre_score')+' → '+average(before,'post_score'),
        average(after,'pre_score')+' → '+average(after,'post_score')],
       ['平均学习增益',sign(mean(before.map(r=>r.gain)))+' 分',sign(mean(after.map(r=>r.gain)))+' 分'],
-      ['独立迁移通过',fraction(before,'transfer_passed'),fraction(after,'transfer_passed')]
+      ['独立迁移等级（0–4）',average(before,'transfer_level'),average(after,'transfer_level')],
+      ['独立迁移通过',fraction(before,'transfer_passed'),fraction(after,'transfer_passed')],
+      ['行为检查通过',fraction(before,'test_passed'),fraction(after,'test_passed')],
+      ['提示负担（越低越好）',average(before,'hint_burden'),average(after,'hint_burden')]
     ];
     const table=node('table',null,'ev-results-table');
     const head=table.createTHead().insertRow();
@@ -100,10 +109,7 @@
     detail.append(node('p','同一测评、难度和起点范围。至少 '+plan.min_pairs+
       ' 组配对，每组前测差不超过 '+plan.max_pre_gap+' 分。平均增益须至少多 '+plan.min_gain_delta+
       ' 分，后测和迁移等级须改善，迁移通过、行为检查和提示负担不得变差。提示负担按提示级别 × 次数计算。','ev-note'));
-    const passCount = side => rows.filter(row=>row[side].test_passed).length;
-    const hints = side => format(mean(rows.map(row=>row[side].hint_burden)));
-    detail.append(dataRow('行为检查通过',passCount('before')+'/'+rows.length+' → '+passCount('after')+'/'+rows.length),
-      dataRow('平均提示负担',hints('before')+' → '+hints('after')));
+    detail.append(node('p','前测与后测比较同一组四项评分，换算为百分制。迁移用陌生表单单独考查，按 0–4 级评分。提示负担是提示次数乘以级别后求和。','ev-note'));
     for(const [index,{before,after,delta}] of rows.entries()) {
       const evidence=details('第 '+(index+1)+' 组 · 增益差 '+sign(delta.gain_delta)+' 分');
       for(const [label,result] of [['基线',before],['候选试用',after]]) {
@@ -126,28 +132,6 @@
     if(change('hint_burden_delta')>0) fail.push('提示负担增加');
     return fail.length?'未达条件：'+fail.join('、')+'。':'按本次保存的判定，版本未通过。';
   }
-  function trialDetails(results) {
-    const list=details('查看本版本 '+results.length+' 条完成记录');
-    if(!results.length) return null;
-    list.addEventListener('toggle',()=>{
-      if(!list.open || list.childElementCount>1) return;
-      for(const row of results) {
-        const item=details('试验 '+row.trial_id.slice(0,8)+' · 后测 '+readout(row.post_score));
-        item.append(dataRow('前测 → 后测',readout(row.pre_score)+' → '+readout(row.post_score)),
-          dataRow('迁移',readout(row.transfer_level)+'/4'),
-          dataRow('样本',row.eligible?'可纳入对照':'保留记录，未纳入对照'),
-          dataRow('决策回读',row.experience_ref||'未引用已验证策略'),
-          node('p','检查点 '+row.checkpoint_id+' · 评价 '+row.evaluation_id,'ev-id'),
-          node('p','证据 '+row.evidence_ids.join(' / '),'ev-id'));
-        for(const action of row.executed_steps) {
-          item.append(node('p',action.prompt+(action.feedback_id?' · 依据 '+action.feedback_id:''),'ev-id'));
-        }
-        list.append(item);
-      }
-    });
-    return list;
-  }
-
   function showVersion(host, data, version) {
     host.replaceChildren();
     const parent=data.versions.find(row=>row.version===version.parent_version);
@@ -155,12 +139,15 @@
     const pairs=comparisons(version,parent);
     const simulation=data.cohort==='simulation';
     const adopted=version.results.filter(row=>row.strategy_status_at_teach==='validated');
-    const recalled=adopted.filter(row=>row.experience_ref==='input-boundary:'+versionName(version.version));
+    const recalled=adopted.filter(row=>row.experience_ref===(version.id||'input-boundary')+':'+versionName(version.version));
     const headline=node('div',null,'ev-version-heading');
     headline.append(node('h3',versionName(version.parent_version)+' → '+versionName(version.version)),
       node('span',version.status==='validated'&&simulation?'通过模拟门槛':labels[version.status],
         'ev-state ev-state-'+version.status));
-    host.append(headline);
+    host.append(headline,node('p',versionName(version.parent_version)+' '+method(parent)+' → '+
+      versionName(version.version)+' '+method(version)+'。这次只替换「引导练习」环节。','ev-version-definition'));
+    const lifecycle=node('p','沉淀过程 · '+version.history.map(row=>row.status==='validated'&&simulation?'通过模拟门槛':labels[row.status]||row.status).join(' → '),'ev-note');
+    host.append(lifecycle);
     if(recalled.length) headline.append(node('span',recalled.length+' 次后续教学使用并引用新策略','ev-note'));
 
     const steps=node('ol',null,'ev-story');
@@ -170,6 +157,9 @@
     sourceDetails.append(node('p',version.reflection),
       node('p','来源试验 '+version.source_trial_id+' · 评价 '+version.source_evaluation_id,'ev-id'),
       node('p','证据 '+version.evidence_ids.join(' / '),'ev-id'));
+    for(const row of version.supporting_trials||[]) {
+      if(row.trial_id!==version.source_trial_id) sourceDetails.append(node('p','同类缺口试验 '+row.trial_id+' · 评价 '+row.evaluation_id,'ev-id'));
+    }
     issue.append(sourceDetails);
 
     const change=step(steps,'下一版怎么教');
@@ -217,31 +207,87 @@
         ? '试用记录已保存。后续默认教学继续沿用原策略。'
         : '当前只供显式试用。验证通过后，匹配的后续教学才会默认使用。'));
     }
+    if(version.status==='withdrawn') {
+      reuse.prepend(node('p','当前状态：已撤回。下方采用次数来自历史教学。','ev-note'));
+    }
     host.append(steps);
-    const records=trialDetails(version.results);
-    if(records) host.append(records);
   }
+
+  function participantRecords(data) {
+    const root=details('按参与者回看当时的教学');
+    root.classList.add('ev-participant');
+    const participants=new Map();
+    for(const version of data.versions) {
+      for(const row of version.results) {
+        const key=row.participant_number||row.trial_id;
+        if(!participants.has(key)) participants.set(key,[]);
+        participants.get(key).push({...row,strategyName:method(version),currentStatus:version.status});
+      }
+    }
+    if(!participants.size) return null;
+    const label=node('label','参与者');
+    const select=node('select');
+    select.add(new Option('选择一位参与者',''));
+    for(const key of [...participants.keys()].sort((a,b)=>typeof a==='number'&&typeof b==='number'?a-b:String(a).localeCompare(String(b)))) {
+      select.add(new Option(typeof key==='number'?'参与者 '+String(key).padStart(2,'0'):'试验 '+key.slice(0,8),key));
+    }
+    const selected=node('div');
+    select.onchange=()=>{
+      const key=[...participants.keys()].find(key=>String(key)===select.value);
+      selected.replaceChildren();
+      for(const row of participants.get(key)||[]) {
+        const record=node('section',null,'ev-participant-record');
+        record.append(node('h4',versionName(row.version)+' '+row.strategyName),
+          dataRow('当时阶段',teachingState[row.strategy_status_at_teach]||row.strategy_status_at_teach),
+          dataRow('现在状态',labels[row.currentStatus]),
+          dataRow('独立前测 → 后测',readout(row.pre_score)+' → '+readout(row.post_score)),
+          dataRow('独立迁移',readout(row.transfer_level)+'/4 · '+(row.transfer_passed?'通过':'未通过')),
+          dataRow('验证样本',row.eligible?'可纳入对照':'保留记录，未纳入对照'));
+        if(row.learning_goal) record.append(dataRow('Decide 教学目标',row.learning_goal));
+        if(row.pre_weaknesses?.length) record.append(dataRow('Evaluate 前测发现',
+          row.pre_weaknesses.map(key=>dimensions[key]||key).join('、')));
+        if(row.pre_evaluation_ref) record.append(node('p','前测评价 '+row.pre_evaluation_ref,'ev-id'));
+        if(row.experience_ref) record.append(dataRow('跨用户经验',row.experience_ref));
+        if(row.personal_evaluation_ref) record.append(dataRow('个人回访记忆','复用本人的上一条项目评价'));
+        const action=row.executed_steps.find(action=>action.phase==='lesson'&&action.step==='practice');
+        const repair=row.executed_steps.find(action=>action.phase==='remediation');
+        if(action) record.append(dataRow('Teach 实际练习',action.prompt));
+        if(repair) record.append(dataRow('Evaluate → Teach 补练',repair.prompt),
+          node('p','触发补练的评价 '+repair.feedback_id,'ev-id'));
+        record.append(node('p','试验 '+row.trial_id+' · 评价 '+row.evaluation_id,'ev-id'));
+        selected.append(record);
+      }
+    };
+    label.append(select);
+    root.append(label,selected);
+    return root;
+  }
+
 
   window.renderStrategyEvolution = function renderStrategyEvolution(board,data,selected,onSelect) {
     const versions=data.versions.filter(version=>version.parent_version!=null);
     const headline=versions.find(v=>v.version===selected)
+      || versions.findLast(v=>v.status==='validated')
       || versions.findLast(v=>v.history.some(row=>row.status==='validated'))
       || versions.at(-1);
     const simulation=data.cohort==='simulation';
     board.replaceChildren();
     const overview=node('div',null,'ev-overview');
     overview.append(stats([
+      ...(data.participant_count!=null?[[simulation?'模拟参与者':'真人参与者',String(data.participant_count)]]:[]),
       [simulation?'已完成模拟试验（含回访）':'已完成真人试验',String(data.trial_count)],
       [simulation?'通过模拟门槛的策略':'通过试点门槛的策略',String(data.validated_count)]
     ]));
     if(simulation) overview.append(node('p','答卷由脚本或手工演练产生，用来检验策略更新流程。','ev-note'));
+    board.append(node('p','版本号标记一套教法。v1 是此案例的初始教法，后续编号在提出候选时生成，状态表示是否已验证。','ev-note'));
     board.append(overview);
+    const participantLookup=participantRecords(data);
     if(!headline) {
-      const baseline=trialDetails(data.versions[0]?.results||[]);
+
       board.append(node('p',data.versions.length
         ? '当前使用 v1。后测发现可改进的薄弱项后，这里会出现候选教法。'
-        : '还没有试验记录。点击「进行试验」开始前测，或在数据来源中切换到模拟实验。','ev-empty'));
-      if(baseline) board.append(baseline);
+        : '还没有试验记录。点击「单次教学试验」开始前测，或在数据来源中切换到模拟实验。','ev-empty'));
+      if(participantLookup) board.append(participantLookup);
       return;
     }
     if(versions.length>1) {
@@ -258,5 +304,6 @@
     const focus=node('section',null,'ev-focus');
     showVersion(focus,data,headline);
     board.append(focus);
+    if(participantLookup) board.append(participantLookup);
   };
 })();

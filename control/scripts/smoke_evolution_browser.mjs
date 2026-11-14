@@ -5,8 +5,10 @@ import {createServer} from 'node:net';
 import {tmpdir} from 'node:os';
 
 const [browser, evidenceDir, output] = process.argv.slice(2);
-const fresh = evidenceDir === '--fresh';
+const batch = evidenceDir.startsWith('--batch-');
+const fresh = evidenceDir === '--fresh' || batch;
 const neutral = evidenceDir.includes('neutral');
+const linked = evidenceDir.includes('linked-list') || evidenceDir==='--batch-linked';
 const profile = await mkdtemp(join(tmpdir(),'control-evolution-browser-'));
 const verifyData=join(profile,'verify-data');
 await mkdir(verifyData);
@@ -45,11 +47,30 @@ try {
   return result.result.value;
  }
  await call('Page.navigate',{url:base});
- await wait(()=>evaluate("localStorage.getItem('control-workbench-task')"));
+ await wait(()=>evaluate("document.body.classList.contains('home-open') && typeof window.canSwitchControlProject==='function'"));
+ if(!linked) await evaluate("document.querySelector('#evolution-benchmark').value='input-boundary-rubric-v1'");
  await evaluate("document.querySelector('#evolution-open').click()");
  await wait(()=>evaluate("document.querySelector('#evolution-board').innerText.includes('0')"));
+ if(batch) {
+  await evaluate("(()=>{const s=document.querySelector('#evolution-cohort');s.value='simulation';s.dispatchEvent(new Event('change'))})()");
+  const isVisible=await evaluate("!document.querySelector('#ev-sim-controls').hidden");
+  if(!isVisible) throw Error('Automatic simulation controls missing');
+  await evaluate("document.querySelector('#ev-sim-users').value='8';document.querySelector('#ev-sim-returns').value='2';document.querySelector('#ev-sim-start').click()");
+  await wait(()=>evaluate("document.querySelector('#ev-sim-start').disabled && !document.querySelector('#ev-sim-progress').hidden"));
+  await wait(()=>evaluate("document.querySelector('#ev-sim-status').textContent.includes('模拟已完成')"));
+  await wait(()=>evaluate("document.querySelector('#evolution-board').innerText.includes('10')"));
+  const result=await (await fetch(base+'/api/teaching/strategy-simulation')).json();
+  if(result.target!==10 || result.completed!==10 || result.board.participant_count!==8 ||
+     result.board.benchmark_version!==(linked?'linked-list-delete-rubric-v1':'input-boundary-rubric-v1') ||
+     result.recent.length!==6 || !result.recent[0].repeat_visit) throw Error(JSON.stringify(result).slice(0,800));
+  await evaluate("document.querySelector('#ev-sim-run-log').open=true");
+  const log=await evaluate("document.querySelector('#ev-sim-recent').innerText");
+  if(!log.includes('第 10 轮')||!log.includes('回访')) throw Error(log);
+  await writeFile(output,Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
+  console.log('Verified 8 adjustable participants, 2 visits and live/final progress for '+result.benchmark_version);
+ } else {
  if(!fresh) {
-  await evaluate("(()=>{const select=document.querySelector('#evolution-cohort');select.value='simulation';select.dispatchEvent(new Event('change'))})()");
+  await evaluate("(()=>{const select=document.querySelector('#evolution-cohort');select.value='manual';select.dispatchEvent(new Event('change'))})()");
   if(neutral) {
    await wait(()=>evaluate("document.querySelector('.ev-version-picker select')?.options.length"));
    await evaluate("(()=>{const select=document.querySelector('.ev-version-picker select');select.value='2';select.dispatchEvent(new Event('change'))})()");
@@ -57,7 +78,7 @@ try {
   } else {
    await wait(()=>evaluate("document.querySelector('#evolution-board').innerText.includes('v1 → v2')"));
    const receipt=await evaluate("document.querySelector('#evolution-board').innerText");
-   for(const token of ['学生卡在哪里','下一版怎么教','试用结果怎样','后续有没有用上','5 组配对','31','通过模拟门槛']) {
+   for(const token of ['学生卡在哪里','下一版怎么教','试用结果怎样','后续有没有用上',...(linked?['2 组配对','缺少有效断言']:['5 组配对','31']),'通过模拟门槛']) {
     if(!receipt.includes(token)) throw Error('Missing '+token);
    }
   }
@@ -76,7 +97,8 @@ try {
   await evaluate(`document.querySelector('#evolution-arm').value=${JSON.stringify(arm)}`);
   await evaluate("document.querySelector('#evolution-simulate').click()");
   await see('独立前测');
-  await see('模拟实验');
+  await see('手工模拟');
+  await wait(()=>evaluate("!document.body.classList.contains('home-open') && Boolean(localStorage.getItem('control-workbench-task'))"));
  }
  async function see(label) {
   await wait(()=>evaluate(`document.querySelector('#evolution-trial').innerText.includes(${JSON.stringify(label)})`));
@@ -85,6 +107,15 @@ try {
  async function submit(values) {
   await evaluate(`(()=>{const f=document.querySelector('#evolution-trial form');f.querySelectorAll('select').forEach((x,i)=>x.value=${JSON.stringify(values)}[i]);f.requestSubmit()})()`);
  }
+ if(linked) {
+  await start('Browser linked-list','default');
+  await evaluate(`(()=>{const form=document.querySelector('#evolution-trial form');
+    const answers=[1,2,0,1,1,2,0];
+    form.querySelectorAll('select').forEach((field,index)=>field.value=answers[index]);
+    form.querySelector('textarea').value=JSON.stringify([{values:[3,6,9],target:6,expected:[3,9]}]);
+    form.requestSubmit()})()`);
+  await see('引导练习');
+ } else {
  const gap=[1,0,1,1,1,2,1,1,0,1,1];
  const correct=[1,0,2,1,1,2,1,1,0,0,0];
  await start('Browser A','default');
@@ -109,8 +140,10 @@ try {
   await submit(gap);await see('使用已验证的匹配策略');
   await writeFile(output,Buffer.from((await call('Page.captureScreenshot',{format:'png'})).data,'base64'));
  }
+ }
  console.log(fresh?'Verified browser A → B → C, including v2 adoption':'Verified stored dashboard and feedback-driven UI in Chromium');
 
+ }
 } finally {
  ws?.close();
  edge.kill();

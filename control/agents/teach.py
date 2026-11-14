@@ -1,5 +1,5 @@
 """Render and record actual steps from the V0.2.1 teaching subplanner."""
-from . import teaching_methods
+from . import teaching_methods, benchmark_registry
 STAGES = ['诊断', '必要知识', '引导实践', '独立迁移']
 BASE = {
     'sequence': [
@@ -15,6 +15,13 @@ ADAPT = {
     'knowledge': ('概念拆解','用一条含内部空格的正常标题和一条纯空格标题，区分内容与两端空白。'),
     'ai_collaboration': ('改写交付要求','先明确 Coding Agent 要保留的行为，再列出应拒绝的输入和你将运行的验收用例。'),
 }
+
+
+def materials(version):
+    suite=benchmark_registry.get(version)
+    if not hasattr(suite,'BASE_PROMPTS'):
+        return BASE,ADAPT
+    return {'sequence':[{**step,'prompt':prompt} for step,prompt in zip(BASE['sequence'],suite.BASE_PROMPTS)]},suite.ADAPT
 
 
 def event(session, step, phase, feedback=None, override=False):
@@ -73,11 +80,14 @@ def start(session):
 def after_feedback(session, feedback, remediate=True):
     planner=session['planner']
     if remediate:
-        weak=next((k for k in ADAPT if k in feedback['weaknesses']),None)
-        missing=any(d in feedback['missing'] for d in ADAPT)
+        _,adapt=materials(session['benchmark_version'])
+        weak=next((k for k in adapt if k in feedback['weaknesses']),None)
+        missing=any(d in feedback['missing'] for d in adapt)
         if weak or missing:
             subplan=planner['subplans'][session['decision']['decision_id']]
-            prompt=ADAPT[weak][1] if weak else '补交缺失的判断，并写出预期的测试结果。'
+            prompt=adapt[weak][1] if weak else '补交缺失的判断，并写出预期的测试结果。'
+            if feedback.get('case_gaps'):
+                prompt+=' 本次缺少可靠断言：'+'、'.join(feedback['case_gaps'])+'。'
             planner['last_evaluation']={
                 'evaluation_id':feedback['evaluation_id'],'decision_id':session['decision']['decision_id'],
                 'goal_id':session['decision']['goal_id'],'subplan_id':subplan['id'],'subplan_version':subplan['version'],

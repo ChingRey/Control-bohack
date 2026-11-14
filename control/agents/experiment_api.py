@@ -1,7 +1,7 @@
 """HTTP-facing storage and orchestration for the teaching benchmark."""
 import json
 import os
-from . import benchmark, student_library, strategy_library as library, teaching_trial
+from . import student_library, strategy_library as library, teaching_trial
 
 
 def begin(c, task, body, current_code_hash):
@@ -19,9 +19,9 @@ def begin(c, task, body, current_code_hash):
     checkpoint=next((item for item in task.get('coding_checkpoints',[])
                      if item['checkpoint_id']==checkpoint_id),None)
     if checkpoint is None:
-        raise ValueError('请从进化面板新建待办输入教学示例')
+        raise ValueError('请从进化面板新建教学示例')
     if checkpoint['project_evidence']['code_hash']!=current_code_hash:
-        raise ValueError('待办示例代码已修改，请重新新建教学试验')
+        raise ValueError('教学示例代码已修改，请重新新建教学试验')
     if load(c,task['id']):
         raise ValueError('当前项目已有教学试验，请继续当前试验或另建项目')
     session=teaching_trial.create(task,profile,cohort,arm)
@@ -40,8 +40,8 @@ def personal(c, learner_id, cohort):
     records={}
     for raw, in rows:
         s=json.loads(raw)
-        if s['stage']=='complete' and s['cohort']==cohort and s['skill_id'] not in records:
-            records[s['skill_id']]={'evaluation_id':s['result']['evaluation_id'],'mastered':s['result']['mastered'],
+        if s['stage']=='complete' and s['cohort']==cohort and s['benchmark_version'] not in records:
+            records[s['benchmark_version']]={'evaluation_id':s['result']['evaluation_id'],'mastered':s['result']['mastered'],
                                     'weaknesses':s['result']['weaknesses'],'benchmark_version':s['benchmark_version'],
                                     'evidence_sufficiency':s['result']['evidence_sufficiency']}
     return records
@@ -51,7 +51,7 @@ def submit(c, task, body):
     s=load(c,task['id'])
     if not s:
         raise ValueError('请先开始教学试验')
-    packet=personal(c,s['learner_id'],s['cohort']).get(benchmark.SKILL,{})
+    packet=personal(c,s['learner_id'],s['cohort']).get(s['benchmark_version'],{})
     teaching_trial.apply(s,body,lambda trial:library.select(c,trial),packet)
     if s['stage']=='complete':
         library.finish(c,s)

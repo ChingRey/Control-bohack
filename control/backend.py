@@ -18,10 +18,11 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from agents import project_titles, model_limits, teaching_evolution, workflow_records, project_safety, project_delivery, student_library, project_runner, project_runtime, teaching_library, workflow, teaching_sessions, evolution_port, skill_gateway, teaching_bridge, teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor, code_refs, project_files, checkpoint_control, checkpoints as checkpoint_events
 from agents.coding import PLAN, FILES, SampleCodingAgent
-from agents import teaching_v021, experiment_api, strategy_library, teaching_trial
+from agents import teaching_v021, experiment_api, strategy_library, teaching_trial, strategy_simulation
+from agents import benchmark_registry, linked_list_benchmark, linked_list_operations
 
 ROOT = Path(__file__).resolve().parent
-DATA = ROOT / 'data' / 'workbench'
+DATA = Path(os.environ['CONTROL_WORKBENCH_DATA']).resolve() if os.getenv('CONTROL_WORKBENCH_DATA') else ROOT / 'data' / 'workbench'
 DATA.mkdir(parents=True, exist_ok=True)
 LOCK = threading.RLock()
 TASK_LOCKS = {}
@@ -62,7 +63,7 @@ def import_teaching_experience(t, body):
  if not additions:return
  teaching_evolution.checkpoint(target,'手动引用同一学生的教学经验（试用）')
  for entry in additions:
-  imported=copy.deepcopy(entry);imported.update(id='exp-'+uuid.uuid4().hex[:12],revision=1,status='trial',verified=False,helpful=0,harmful=0,uncertain=0,history=[],evidence_ids=[],origin='personal_transfer',source_project=source['id'],source_entry=entry['id'],source_revision=entry['revision'])
+  imported=copy.deepcopy(entry);imported.update(id='exp-'+uuid.uuid4().hex[:12],revision=1,status='trial',verified=False,helpful=0,harmful=0,uncertain=0,history=[],evidence_ids=[],origin='personal_transfer',explicit_project_trial=True,source_project=source['id'],source_entry=entry['id'],source_revision=entry['revision'])
   target['entries'].append(imported)
 
 HOST_MODEL_MTIME = None
@@ -344,7 +345,7 @@ def start_teaching(t, action='message'):
  threading.Thread(target=run_worker,daemon=True).start()
 
 def start_checkpoint_teaching(t):
- if t.get('teaching_v021',{}).get('library') and t.get('checkpoint_delivery')!='manual':
+ if dev_integration() and t.get('teaching_v021',{}).get('library') and t.get('checkpoint_delivery')!='manual':
   with task_lock(t['id']):
    fresh=load(t['id']);checkpoint=fresh['coding_checkpoints'][-1]
    try:
@@ -786,6 +787,9 @@ window.addEventListener('load',()=>report('ready','页面已加载；这不代�
   except (ValueError,FileNotFoundError):self.send_error(404)
   except OSError:self.send_error(500,'Project file could not be read')
 
+def dev_integration():
+ return os.getenv('CONTROL_ENABLE_DEV_INTEGRATION')=='1' and PUBLIC_HOST=='127.0.0.1'
+
 class Handler(BaseHTTPRequestHandler):
  def reply(self, code, obj, mime='application/json; charset=utf-8'):
   raw=json.dumps(obj,ensure_ascii=False).encode() if isinstance(obj,(dict,list)) else obj
@@ -795,22 +799,29 @@ class Handler(BaseHTTPRequestHandler):
    parts=urlparse(self.path).path.strip('/').split('/')
    if parts in (['api','teaching','strategy-trials'],['api','teaching','strategy-trials','simulation']):
     host=self.headers.get('Host','')
-    if host not in (f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}'):
+    if host not in (f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}',f'{PUBLIC_HOST}:{self.server.server_port}'):
      return self.reply(403,{'error':'仅允许本机访问'})
-    with connection() as c:data=strategy_library.dashboard(c,'simulation' if len(parts)==4 else 'human')
+    version=parse_qs(urlparse(self.path).query).get('benchmark',[None])[0]
+    suite=benchmark_registry.get(version)
+    with connection() as c:data=strategy_library.dashboard(c,'simulation' if len(parts)==4 else 'human',suite.VERSION)
     return self.reply(200,data)
    if len(parts)==5 and parts[:2]==['api','tasks'] and parts[3:]==['teaching','experiment']:
     host=self.headers.get('Host','')
-    if host not in (f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}'):
+    if host not in (f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}',f'{PUBLIC_HOST}:{self.server.server_port}'):
      return self.reply(403,{'error':'仅允许本机访问'})
     with task_lock(parts[2]), connection() as c:
      session=experiment_api.load(c,parts[2])
      return self.reply(200,teaching_trial.view(session) if session else {})
 
+   if parts==['api','teaching','strategy-simulation']:
+    if self.headers.get('Host','') not in (f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}',f'{PUBLIC_HOST}:{self.server.server_port}'):
+     return self.reply(403,{'error':'地址不受支持'})
+    return self.reply(200,strategy_simulation.status(DATA,include_board=True))
    if len(parts)==4 and parts[:2]==['api','tasks'] and parts[3]=='teaching-v021':
+    if not dev_integration():return self.reply(404,{'error':'接口不存在'})
     teaching_v021.auth(self,parts[2])
     with task_lock(parts[2]):return self.reply(200,teaching_v021.get_view(load(parts[2])))
-   if parts==['api','health']: return self.reply(200,{'coding_mode':'sample_or_opencode','coding':opencode_executor.metadata(),'teaching':teaching.TeachingAgent().metadata(),'teaching_library':teaching_library.metadata(),'storage':'sqlite','background_revision':'snapshot-v2','manual_simulation_enabled':os.getenv('CONTROL_ALLOW_SIMULATION')=='1','model_timeouts':model_limits.settings()})
+   if parts==['api','health']: return self.reply(200,{'coding_mode':'sample_or_opencode','coding':opencode_executor.metadata(),'teaching':teaching.TeachingAgent().metadata(),'teaching_library':teaching_library.metadata(),'storage':'sqlite','background_revision':'snapshot-v2','local_model_settings':self.local_model_settings(),'manual_simulation_enabled':os.getenv('CONTROL_ALLOW_SIMULATION')=='1','model_timeouts':model_limits.settings()})
    if len(parts)==4 and parts[:3]==['api','teaching','library']:
     data=teaching_library.catalog();card=next((c for c in data['lessons'] if c['id']==parts[3]),None)
     if card is None:return self.reply(404,{'error':'课卡不存在'})
@@ -862,13 +873,18 @@ class Handler(BaseHTTPRequestHandler):
     if not safe_preview_name(parts[2]): return self.reply(404,{'error':'文件不存在'})
     return self.reply(200,p.read_bytes(),mimetypes.guess_type(p.name)[0] or 'text/plain')
    name='index.html' if parts==[''] else '/'.join(parts)
-   if name not in ['index.html','app.js','workflow.js','evolution.js','teaching-v021.js','style.css','strategy-trials.js','strategy-evolution-view.js','strategy-trials.css']: return self.reply(404,{'error':'地址不存在'})
+   if name not in ['index.html','app.js','workflow.js','evolution.js','style.css','strategy-trials.js','strategy-evolution-view.js','strategy-simulation.js','model-settings.js','strategy-trials.css']: return self.reply(404,{'error':'地址不存在'})
    p=ROOT/'frontend'/name
    return self.reply(200,p.read_bytes(),(mimetypes.guess_type(name)[0] or 'text/plain')+'; charset=utf-8')
   except teaching_v021.AccessDenied as e:self.reply(403,{'error':str(e)})
   except UnicodeError: self.reply(422,{'error':'项目文件不是有效的 UTF-8 文本，请修复文件编码'})
   except (ValueError,FileNotFoundError): self.reply(404,{'error':'任务或文件不存在'})
   except (OSError,sqlite3.Error): self.reply(500,{'error':'读取文件或存储失败，请稍后重试'})
+ def local_model_settings(self):
+  # The standalone workbench binds to loopback. Shared demonstrations use the host configuration.
+  return PUBLIC_HOST=='127.0.0.1' and self.headers.get('Host') in (
+   f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}')
+
  def do_POST(self):
   host=self.headers.get('Host','');origin=self.headers.get('Origin')
   if host not in (f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}',f'{PUBLIC_HOST}:{self.server.server_port}'): return self.reply(403,{'error':'仅允许本机访问'})
@@ -880,10 +896,15 @@ class Handler(BaseHTTPRequestHandler):
    body=json.loads(self.rfile.read(length) or b'{}')
    if not isinstance(body,dict): raise ValueError('请求必须是对象')
    parts=urlparse(self.path).path.strip('/').split('/')
+   if parts==['api','teaching','strategy-simulation']:
+    return self.reply(202,strategy_simulation.start(DATA,ROOT,body.get('scenario'),
+      users=body.get('users',50),return_visits=body.get('return_visits'),
+      benchmark_version=body.get('benchmark_version')))
    if parts==['api','teaching-v021','session']:
+    if not dev_integration():return self.reply(404,{'error':'接口不存在'})
     return teaching_v021.login(self,body,__import__(__name__))
    with task_lock(parts[2] if len(parts)>3 and parts[:2]==['api','tasks'] else 'settings-or-create'):
-    if parts in (['api','settings','coding'],['api','settings','teaching']):
+    if parts in (['api','settings','coding'],['api','settings','teaching']) and not self.local_model_settings():
      return self.reply(403,{'error':'模型由演示负责人统一配置，学生端不提供修改入口'})
     if parts==['api','demo-student']:
      if body.get('confirmed') is not True:raise ValueError('请确认共享演示身份')
@@ -904,7 +925,8 @@ class Handler(BaseHTTPRequestHandler):
      return self.reply(200,{'configured':True,'provider':teaching.TeachingAgent().metadata()})
     if parts==['api','tasks']:
      benchmark=body.get('scenario')=='strategy-trial'
-     if benchmark and body.get('coding_mode')=='opencode':raise ValueError('策略试验使用固定待办教材')
+     suite=benchmark_registry.get(body.get('benchmark_version')) if benchmark else None
+     if benchmark and body.get('coding_mode')=='opencode':raise ValueError('策略试验使用固定教材')
      tid=str(uuid.uuid4());t=dict(id=tid,title='待办事项 · 示例教程',mode='sample',stage='created',step=0,plan=[],plan_draft=[],messages=[],changes=[],checks=[])
      teaching.state(t)
      if body.get('student_id')==DEMO_STUDENT_ID:workflow_records.initialize(t)['student_id']=DEMO_STUDENT_ID
@@ -921,7 +943,18 @@ class Handler(BaseHTTPRequestHandler):
       t['messages']=[m for m in t['messages'] if m['channel']!='teaching']
       message(t,'teaching','assistant','我能看到你与 Coding 的对话、计划和项目代码，可以直接和我讨论。')
       message(t,'coding','assistant','你好，有什么想开发的吗？我们可以先聊聊你的想法。')
-     if body.get('scenario')=='teaching' or benchmark:
+     if suite is linked_list_benchmark:
+      before=read_project_files(tid)
+      t.update(title=suite.TITLE,plan=suite.PROJECT.copy(),stage='review',benchmark_version=suite.VERSION)
+      lesson=project(tid)/'delete_first.py'
+      lesson.write_bytes(Path(linked_list_operations.__file__).read_bytes())
+      checkpoint_id=str(uuid.uuid4())
+      checkpoint=checkpoint_events.record(t,checkpoint_id,'核对单链表删除的边界与实际断言',
+            '载入链表删除教材',before,read_project_files(tid),1)
+      checkpoint['delivery']['status']='skipped'
+      t['benchmark_checkpoint_id']=checkpoint_id
+      message(t,'teaching','assistant','打开「教学进化试验」独立设计链表删除测试。')
+     elif body.get('scenario')=='teaching' or benchmark:
       before=read_project_files(tid) if benchmark else None
       t['title']='空白输入审查 · 教学预置示例';t['plan']=PLAN
       for step in range(2):
@@ -948,6 +981,7 @@ class Handler(BaseHTTPRequestHandler):
       missing=(body.get('channel')=='coding' and t.get('mode')=='opencode' and not opencode_executor.CONFIG) or (body.get('channel')=='teaching' and teaching.TeachingAgent().mode!='model')
       if missing:return self.reply(503,{'error':'演示模型尚未就绪，请联系演示负责人；无需学生配置'})
      if len(parts)==5 and parts[3]=='teaching-v021':
+      if not dev_integration():return self.reply(404,{'error':'接口不存在'})
       teaching_v021.auth(self,t['id'],admin=parts[4]=='allow-switch')
       code,result=teaching_v021.command(t,parts[4],body,__import__(__name__));return self.reply(code,result)
      if len(parts)==6 and parts[3]=='checkpoints':

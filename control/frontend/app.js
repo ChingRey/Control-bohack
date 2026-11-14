@@ -532,3 +532,6 @@ window.addEventListener('control:open-teaching-example',event=>{
  const id=event.detail?.id;
  if(id)enterProject(id);
 });
+$('project-tools-open').onclick=()=>task ? $('project-tools-dialog').showModal() : toast('请先进入一个项目');
+$('project-tools-close').onclick=()=>$('project-tools-dialog').close();
+$('settings-reset-coding').onclick=()=>$('reset-coding-window').click();

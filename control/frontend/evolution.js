@@ -1,9 +1,6 @@
 // Project-local experience controls. Model text is always rendered as text, never HTML.
 (() => {
- const host=document.createElement('details');host.id='teaching-evolution';
- const heading=document.createElement('summary');heading.textContent='项目反思记录';
- const status=document.createElement('p'),open=document.createElement('button');open.textContent='查看与管理';open.id='experience-open';
- host.append(heading,status,open);document.querySelector('.teaching-overview')?.append(host);
+ const open=document.getElementById('experience-open');
  const dialog=document.createElement('dialog');dialog.id='experience-dialog';dialog.className='learning-dialog';document.body.append(dialog);
  const limitSettings=document.createElement('details');limitSettings.id='model-timeouts';
  limitSettings.append(document.createElement('summary'));limitSettings.firstChild.textContent='模型超时（秒）';
@@ -22,7 +19,7 @@
  async function change(body){if(await perform(()=>api('/tasks/'+task.id+'/teaching/experience-manage',{expected_revision:task.teaching_evolution.revision,...body})))draw()}
  function draw(){
   const s=task?.teaching_evolution;if(!s)return;
-  dialog.replaceChildren(el('h2','项目反思记录'),el('p',`项目内经验 · v${s.revision} · 原话和评分均可回查；反思只生成候选。手动登记试用属于本项目观察，策略效果请查看「教学进化试验」。`));
+  dialog.replaceChildren(el('h2','项目教学复盘'),el('p',`本项目复盘修订 ${s.revision}。回看教学对话和模型建议。这里生成的候选只供本项目试用。跨用户策略使用独立试验与验证。`));
   const mode=el('select');mode.id='experience-mode';mode.setAttribute('aria-label','经验工作模式');
   for(const [value,title] of [['adaptive','参考初始教法和已手动登记的局部试用'],['observe','仅参考已启用教法，新反思不自动试用'],['off','关闭经验注入与反思']])mode.add(new Option(title,value));mode.value=s.mode;
   const autoLabel=el('label',' 自动后台反思（评价、反思各调用一次，失败可能重试） '),auto=el('input');auto.id='experience-auto';auto.type='checkbox';auto.checked=s.auto;autoLabel.className='experience-auto-option';autoLabel.prepend(auto);
@@ -58,7 +55,7 @@
   }
   dialog.append(button('关闭',()=>dialog.close()));
  }
- window.renderTeachingEvolution=()=>{const s=task?.teaching_evolution;status.textContent=s?`v${s.revision} · ${s.entries.filter(e=>e.status!=='inactive').length}条可用／候选 · ${s.reviews.length}批评价 · ${s.run.detail||'尚未反思'}`:'请先打开项目';if(dialog.open)draw()};
+ window.renderTeachingEvolution=()=>{open.disabled=!task;if(dialog.open)draw()};
  open.onclick=()=>{if(!task)return;draw();dialog.showModal()};
  window.renderTeachingEvolution();
 })();

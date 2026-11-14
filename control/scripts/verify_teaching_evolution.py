@@ -52,7 +52,7 @@ def main():
   step('click','#experience-dialog > details:first-of-type summary');step('assert_text','#experience-dialog pre',text='保留其他规则')
   step('click','#experience-dialog > button:last-child');step('click','#close-settings')
   step('fill','#teaching-input',value='请继续讲状态的下一步');step('click','#teaching-form .composer-foot button.primary');step('wait',ms=1700)
-  step('assert_text','#teaching-messages',text='验收夹具回复');step('click','#open-settings');step('click','#experience-open')
+  step('assert_text','#teaching-messages',text='验收夹具回复');step('click','#experience-open')
   step('click','#experience-dialog details[data-entry-id^="exp-"] summary')
   step('click','#experience-dialog details[data-entry-id^="exp-"] button:first-of-type');step('wait',ms=500)
   step('assert_text','#experience-dialog details[data-entry-id^="exp-"] summary',text='已停用')
