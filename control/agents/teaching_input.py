@@ -87,7 +87,7 @@ def build(task, action):
     ctx = {'action': action, 'interaction_mode': 'project_chat',
            'code_changed_since_last_reply':changed_since_last_read,
            'current_request': {'message_id':focus} if action=='message' else
-                              {'instruction':'检查本轮检查点；历史对话仅供接续，不重新回答旧问题。'},
+                              {'instruction':'根据当前教学阶段和接续记忆继续教学；本轮检查点是作品材料，不是要求只做代码审查。历史问题不重复回答。'},
            'development_scope': coding_workflow.phase_contract(task),
            'checkpoint_event': compact_event if review else None,
            'files': selected,

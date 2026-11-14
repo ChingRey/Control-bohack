@@ -108,6 +108,10 @@ class CompactTeachingInputTests(unittest.TestCase):
         self.assertEqual(len(seen),1)
         self.assertTrue(seen[0]['teaching_library']['lessons'])
         self.assertTrue(seen[0]['stage_methods'])
+        self.assertEqual([s['id'] for s in seen[0]['teaching_strategy']['steps']],['identify','explain','return'])
         self.assertIn('src/game.js',seen[0]['files'])
         self.assertEqual(task['teaching']['continuity']['revision'],1)
         self.assertTrue(task['teaching']['turns'][-1]['teaching_library']['submitted_to_model'])
+        trace=task['teaching']['turns'][-1]['teaching_strategy']
+        self.assertFalse(trace['learning_effect_verified'])
+        self.assertEqual(trace['reply_message_id'],len(task['messages']))
