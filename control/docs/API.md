@@ -94,3 +94,8 @@ GET health增加teaching_library版本与课卡/来源数量。真实任务快�
 ## 硅基流动双模型
 
 Teaching新增provider=siliconflow，固定https://api.siliconflow.cn/v1/chat/completions，专用SILICONFLOW_API_KEY；默认zai-org/GLM-5.3。Coding原有siliconflow适配保留，UI默认Qwen/Qwen3-Coder-30B-A3B-Instruct。均允许自填账户支持的模型，两侧独立配置，密钥不自动跨角色或跨服务商回退。详见[SILICONFLOW_API](SILICONFLOW_API.md)。
+
+
+## 独立 TeachingService V0.2.1
+
+新增 `/api/tasks/:id/teaching-v021` 独立Mock边界，不替换旧内部schema_version=1。会话、四端口、真实证据/教学历史映射、策略授权和暂停恢复见 [TEACHING_V021_INTEGRATION.md](TEACHING_V021_INTEGRATION.md)。未配置项目保持原有真实教师路径，Mock评价不更新正式掌握或解锁Skill。

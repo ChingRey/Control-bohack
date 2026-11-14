@@ -1,0 +1,107 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.2.1",
+      "default": "0.2.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Request Id",
+      "type": "string"
+    },
+    "decision_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Decision Id",
+      "type": "string"
+    },
+    "context_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Context Id",
+      "type": "string"
+    },
+    "teach": {
+      "title": "Teach",
+      "type": "boolean"
+    },
+    "capability_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Capability Id"
+    },
+    "knowledge_point_ids": {
+      "items": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Knowledge Point Ids",
+      "type": "array"
+    },
+    "evidence_refs": {
+      "items": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "reason": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "objective": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Objective"
+    },
+    "content_policy_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Content Policy Id",
+      "type": "string"
+    },
+    "content_policy_version": {
+      "minimum": 1,
+      "title": "Content Policy Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "request_id",
+    "decision_id",
+    "context_id",
+    "teach",
+    "capability_id",
+    "reason",
+    "content_policy_id",
+    "content_policy_version"
+  ],
+  "title": "TeachingDecision",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://control.example.invalid/contracts/v0.2.1/decide_response.schema.json"
+}

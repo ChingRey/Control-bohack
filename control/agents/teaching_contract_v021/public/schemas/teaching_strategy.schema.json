@@ -1,0 +1,112 @@
+{
+  "$defs": {
+    "StrategyStep": {
+      "additionalProperties": false,
+      "properties": {
+        "action_type": {
+          "enum": [
+            "ask",
+            "explain",
+            "example",
+            "practice",
+            "hint",
+            "feedback",
+            "transfer"
+          ],
+          "title": "Action Type",
+          "type": "string"
+        },
+        "instruction": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Instruction",
+          "type": "string"
+        },
+        "trigger": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Trigger"
+        }
+      },
+      "required": [
+        "action_type",
+        "instruction"
+      ],
+      "title": "StrategyStep",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "const": "teaching_strategy",
+      "default": "teaching_strategy",
+      "title": "Type",
+      "type": "string"
+    },
+    "id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+    },
+    "version": {
+      "minimum": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "capability_ids": {
+      "items": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Capability Ids",
+      "type": "array"
+    },
+    "learner_condition": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Learner Condition",
+      "type": "string"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/StrategyStep"
+      },
+      "minItems": 1,
+      "title": "Steps",
+      "type": "array"
+    },
+    "stop_conditions": {
+      "items": {
+        "maxLength": 4000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Stop Conditions",
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "capability_ids",
+    "learner_condition",
+    "steps",
+    "stop_conditions"
+  ],
+  "title": "TeachingStrategy",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://control.example.invalid/contracts/v0.2.1/teaching_strategy.schema.json"
+}

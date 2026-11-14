@@ -1,3 +1,9 @@
+# V0.2.1 独立接口集成（2026-11-14）
+
+已新增四接口Mock边界，保留原站内部schema_version=1和只读Teaching。项目需显式启用，演示课程/评分不得用于正式认证或Skill解锁。接入、启动授权、真实HTTP/浏览器/Windows asyncio/CLI验收与限制见 [接口交接说明](docs/TEACHING_V021_INTEGRATION.md)。
+
+Teaching单次网络等待默认90秒、整轮预算240秒，可配置；Coding默认900秒不变。教师失败提示已区分服务HTTP状态、超时和网络错误。旧文档中30秒/120秒描述不再适用于本版本。
+
 # 硅基流动双模型接入补充（2026-11-14）
 
 已融合用户双模型API交接包：Coding和Teaching均可选择硅基流动，默认模型分别沿用包中的Qwen/Qwen3-Coder-30B-A3B-Instruct与zai-org/GLM-5.3。保留按需教学资料和只读Teacher；两侧分别填写Key，保存不等于真实调用已验证。见docs/SILICONFLOW_API.md。

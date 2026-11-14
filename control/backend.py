@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from agents import workflow_records, project_safety, project_delivery, student_library, project_runner, project_runtime, teaching_library, workflow, teaching_sessions, evolution_port, skill_gateway, teaching_bridge, teaching, memory, learning, knowledge, providers, coding_workflow, opencode_executor, code_refs, project_files, checkpoint_control, checkpoints as checkpoint_events
 from agents.coding import PLAN, FILES, SampleCodingAgent
+from agents import teaching_v021
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / 'data' / 'workbench'
@@ -100,7 +101,7 @@ def snapshot(t):
  t['learning_overview']={'profile':learning.profile(t),'skills':learning.readiness(t)}
  with connection() as c:t['project_knowledge']=knowledge.list_task(c,t['id'])
  t['preview_url']=f'http://127.0.0.1:{PREVIEW_PORT}/preview/{t["id"]}/index.html' if PREVIEW_PORT else f'/preview/{t["id"]}/index.html'
- result=dict(t);result.pop('project_versions',None)
+ result=dict(t);result.pop('project_versions',None);result.pop('teaching_v021',None)
  return result
 
 def task_signature(t):
@@ -206,7 +207,8 @@ def start_teaching(t, action='message'):
    save(fresh)
   finish_queue_request(work['id'],'teaching_run',job['id'])
   with task_lock(work['id']):
-   latest=load(work['id'])
+   try:latest=load(work['id'])
+   except ValueError:return
    if result['status']=='completed' and workflow_records.initialize(latest)['auto_organize'] and teaching.TeachingAgent().mode=='model' and not any(m.get('queue_status')=='queued' for m in latest['messages']):
     try:start_organizer(latest)
     except ValueError:pass
@@ -214,6 +216,20 @@ def start_teaching(t, action='message'):
  threading.Thread(target=worker,daemon=True).start()
 
 def start_checkpoint_teaching(t):
+ if t.get('teaching_v021',{}).get('library') and t.get('checkpoint_delivery')!='manual':
+  with task_lock(t['id']):
+   fresh=load(t['id']);checkpoint=fresh['coding_checkpoints'][-1]
+   try:
+    teaching_v021.command(fresh,'decide',{'request_id':'cp-decide-'+checkpoint['checkpoint_id']},__import__(__name__))
+    fresh=load(t['id'])
+    decision=fresh['teaching_v021']['decisions'][fresh['teaching_v021']['active_decision']]
+    if decision['teach']:
+     teaching_v021.command(fresh,'teach',{'request_id':'cp-teach-'+checkpoint['checkpoint_id']},__import__(__name__))
+    fresh=load(t['id'])
+    fresh['coding_checkpoints'][-1]['delivery']={'status':'completed','engine_version':'0.2.1','mode':teaching_v021.SERVICE_MODE};save(fresh)
+   except Exception:
+    fresh=load(t['id']);fresh['coding_checkpoints'][-1]['delivery']={'status':'failed','error':'v021_checkpoint_failed; retry via integration console'};save(fresh)
+  return
  # Coding is already committed. A Teaching failure must not rewrite its status.
  if t.get('checkpoint_delivery')=='manual':
   t['coding_checkpoints'][-1]['delivery']={'status':'available','mode':'manual'};save(t);return
@@ -276,13 +292,13 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
     fresh=load(t['id'])
     if fresh.get('coding_run',{}).get('id')!=job['id']:return
     if task_signature(fresh)!=signature or project_files.scan(project(t['id']))!=(original,original_assets):raise ValueError('项目已变化，拒绝采用过期结果')
-    failed_writes=[e for e in result['events'] if e.get('part',{}).get('tool') in ('write','edit','patch','apply_patch','multiedit') and e.get('part',{}).get('state',{}).get('status')=='error']
+    failed_writes=opencode_executor.failed_file_tools(result['events'])
     if failed_writes:
      coding_workflow.state(fresh)['tool_events']=result['events'];save(fresh)
-     raise ValueError('写文件工具调用失败，本轮未完成；不能采用模型声称已完成的回复。请检查工具调用记录后重试。')
+     raise ValueError('文件工具执行失败（不一定是权限问题）：'+str(failed_writes[-1].get('part',{}).get('state',{}).get('error','未知工具错误'))[:500]+'；本轮改动未提交')
     if chatting:
      if fresh.get('plan') and any(result['files'].get(n)!=original.get(n) for n in result['files']):
-      coding_workflow.state(fresh)['checkpoints'][fresh['step']]['status']='executed_pending_review'
+      coding_workflow.mark_executed(fresh)
      coding_workflow.sync_plan(fresh,result['text'],result['events'])
      apply_coding_files(fresh,original,result['files'],instruction,original_assets,after_assets)
     elif planning:
@@ -299,7 +315,7 @@ def start_coding(t, instruction, planning=False, chatting=False, checkpoint_oper
       save(fresh);return
 
      apply_coding_files(fresh,original,result['files'],instruction,original_assets,after_assets)
-     coding_workflow.state(fresh)['checkpoints'][fresh['step']]['status']='executed_pending_review'
+     coding_workflow.mark_executed(fresh)
      fresh['stage']='review'
     skill_gateway.record(fresh,job['id'],work['step'],packet['learning_context']['skills'],'completed')
     if not chatting and not planning:
@@ -359,7 +375,9 @@ def task_busy(t):
 
 def finish_queue_request(tid,field,job_id):
  with task_lock(tid):
-  fresh=load(tid);job=fresh.get(field,{})
+  try:fresh=load(tid)
+  except ValueError:return
+  job=fresh.get(field,{})
   if job.get('id')!=job_id or job.get('status')!='failed' or not job.get('queue_request_id'):return
   row=next((m for m in fresh['messages'] if m.get('request_id')==job['queue_request_id']),None)
   if row:row['queue_status']='needs_retry';save(fresh)
@@ -377,7 +395,8 @@ def enqueue_chat(t,body):
 
 def drain_chat(tid):
  with task_lock(tid):
-  t=load(tid)
+  try:t=load(tid)
+  except ValueError:return
   if task_busy(t):return
   row=next((m for m in t['messages'] if m.get('queue_status')=='queued'),None)
   if not row:return
@@ -465,6 +484,9 @@ class Handler(BaseHTTPRequestHandler):
  def do_GET(self):
   try:
    parts=urlparse(self.path).path.strip('/').split('/')
+   if len(parts)==4 and parts[:2]==['api','tasks'] and parts[3]=='teaching-v021':
+    teaching_v021.auth(self,parts[2])
+    with task_lock(parts[2]):return self.reply(200,teaching_v021.get_view(load(parts[2])))
    if parts==['api','health']: return self.reply(200,{'coding_mode':'sample_or_opencode','coding':opencode_executor.metadata(),'teaching':teaching.TeachingAgent().metadata(),'teaching_library':teaching_library.metadata(),'storage':'sqlite'})
    if parts==['api','students']:
     with connection() as c:rows=c.execute('SELECT body FROM student_libraries').fetchall()
@@ -513,9 +535,10 @@ class Handler(BaseHTTPRequestHandler):
     if not safe_preview_name(parts[2]): return self.reply(404,{'error':'文件不存在'})
     return self.reply(200,p.read_bytes(),mimetypes.guess_type(p.name)[0] or 'text/plain')
    name='index.html' if parts==[''] else '/'.join(parts)
-   if name not in ['index.html','app.js','workflow.js','style.css']: return self.reply(404,{'error':'地址不存在'})
+   if name not in ['index.html','app.js','workflow.js','teaching-v021.js','style.css']: return self.reply(404,{'error':'地址不存在'})
    p=ROOT/'frontend'/name
    return self.reply(200,p.read_bytes(),(mimetypes.guess_type(name)[0] or 'text/plain')+'; charset=utf-8')
+  except teaching_v021.AccessDenied as e:self.reply(403,{'error':str(e)})
   except UnicodeError: self.reply(422,{'error':'项目文件不是有效的 UTF-8 文本，请修复文件编码'})
   except (ValueError,FileNotFoundError): self.reply(404,{'error':'任务或文件不存在'})
   except (OSError,sqlite3.Error): self.reply(500,{'error':'读取文件或存储失败，请稍后重试'})
@@ -530,6 +553,8 @@ class Handler(BaseHTTPRequestHandler):
    body=json.loads(self.rfile.read(length) or b'{}')
    if not isinstance(body,dict): raise ValueError('请求必须是对象')
    parts=urlparse(self.path).path.strip('/').split('/')
+   if parts==['api','teaching-v021','session']:
+    return teaching_v021.login(self,body,__import__(__name__))
    with task_lock(parts[2] if len(parts)>3 and parts[:2]==['api','tasks'] else 'settings-or-create'):
     if parts==['api','students']:
      with connection() as c:record=student_library.create(c,body.get('name'))
@@ -567,6 +592,9 @@ class Handler(BaseHTTPRequestHandler):
     else:
      if len(parts)<4 or parts[:2]!=['api','tasks']: return self.reply(404,{'error':'接口不存在'})
      t=load(parts[2]); action='/'.join(parts[3:]); text=body.get('message','')
+     if len(parts)==5 and parts[3]=='teaching-v021':
+      teaching_v021.auth(self,t['id'],admin=parts[4]=='allow-switch')
+      code,result=teaching_v021.command(t,parts[4],body,__import__(__name__));return self.reply(code,result)
      if len(parts)==6 and parts[3]=='checkpoints':
       code,result=checkpoint_command(t,parts[4],parts[5],body);return self.reply(code,result)
      if action=='coding/plan-decision' and t.get('plan_decision',{}).get('request_id')==body.get('request_id'):
@@ -843,6 +871,7 @@ class Handler(BaseHTTPRequestHandler):
      else:start_teaching(t,'review')
      return self.reply(202,snapshot(t))
     save(t);self.reply(200,snapshot(t))
+  except teaching_v021.AccessDenied as e:self.reply(403,{'error':str(e)})
   except UnicodeError: self.reply(422,{'error':'文件或请求不是有效的 UTF-8 文本，请检查编码'})
   except (ValueError,TypeError,KeyError,json.JSONDecodeError) as e: self.reply(400,{'error':str(e)})
   except (OSError,sqlite3.Error): self.reply(500,{'error':'文件或记录保存失败，请检查本地文件与存储后重试'})
@@ -863,6 +892,8 @@ def create_preview_server(preferred_port):
 
 def recover_interrupted(t):
  changed=False
+ for request in t.get('teaching_v021',{}).get('requests',{}).values():
+  if request.get('status')=='running':request.update(status='failed',error='service_restarted; explicit retry required');changed=True
  for row in t.get('messages',[]):
   if row.get('queue_status')=='queued':row['queue_status']='needs_retry';changed=True
  for key in ('coding_run','teaching_run','organizer_run','verification_run'):

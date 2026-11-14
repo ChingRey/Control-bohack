@@ -94,3 +94,15 @@ def execute(files,payload,planning=False,chatting=False,binary_files=None):
         if any(cfg['key'].encode() in project_files.decode(value) for value in after_binary.values()):raise ValueError('候选文件包含本轮API密钥，拒绝保存')
         if planning and (after!=files or after_binary!=binary_files):raise ValueError('讨论和计划阶段不能修改项目文件')
         return {'text':'\n'.join(final_texts or turn_texts or texts[-1:]).replace(cfg['key'],'[REDACTED]'),'files':after,'binary_files':after_binary,'events':events[-100:],'raw':raw[-30000:]}
+
+
+def failed_file_tools(events):
+    failures=[]
+    for event in events:
+        part=event.get('part',{});state=part.get('state',{})
+        if part.get('tool') not in ('write','edit','patch','apply_patch','multiedit') or state.get('status')!='error':continue
+        args=state.get('input',{})
+        # This exact no-op is not a permissions failure or a failed modification.
+        if part.get('tool')=='edit' and isinstance(args.get('oldString'),str) and args.get('oldString')==args.get('newString') and 'oldString and newString are identical' in str(state.get('error','')):continue
+        failures.append(event)
+    return failures

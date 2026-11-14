@@ -114,3 +114,9 @@ def confirms_plan(text):
     import re
     text=re.sub(r'[\s。！!，,]+','',text)
     return text in ('确认计划','就按这个计划','按这个计划做','符合','符合我的期望','计划没问题','我确认了','确认了','我确认','确认','可以就这样','就这样吧','没问题')
+
+
+def mark_executed(task):
+    checkpoints=state(task)['checkpoints'];step=task['step']
+    if 0<=step<len(checkpoints):checkpoints[step]['status']='executed_pending_review'
+    # Explicit file requests may execute before a multi-step plan exists.

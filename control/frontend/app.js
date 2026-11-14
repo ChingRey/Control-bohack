@@ -153,7 +153,7 @@ function renderChats(){
   if(ch==='teaching'){
    const run=task.teaching_run;
    if(run&&['queued','running'].includes(run.status)){const elapsed=Math.max(0,Math.floor(Date.now()/1000-run.started_at));el.append(waitingNode((run.detail||'教师正在处理')+' · '+elapsed+' 秒'));}
-   if(run?.status==='failed'){const box=document.createElement('div');box.className='reply-error';const p=document.createElement('p');p.textContent=run.detail||'回复未完成，消息已保存';const retry=document.createElement('button');retry.textContent='重试回复';retry.onclick=()=>perform(()=>api('/tasks/'+task.id+'/teaching/review',{}));box.append(p,retry);const detail=document.createElement('details');const title=document.createElement('summary');title.textContent='查看错误详情';detail.append(title,document.createTextNode(run.error||''));box.append(detail);el.append(box)}
+   if(run?.status==='failed'){const box=document.createElement('div');box.className='reply-error';const p=document.createElement('p');p.textContent=run.error||run.detail||'回复未完成，消息已保存';const retry=document.createElement('button');retry.textContent='重试回复';retry.onclick=()=>perform(()=>api('/tasks/'+task.id+'/teaching/review',{}));box.append(p,retry);const detail=document.createElement('details');const title=document.createElement('summary');title.textContent='查看错误详情';detail.append(title,document.createTextNode(run.error||''));box.append(detail);el.append(box)}
   }
   if(nearBottom)el.scrollTop=el.scrollHeight;
  }

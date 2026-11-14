@@ -1,0 +1,9 @@
+{
+  "proposal_id": "proposal-001",
+  "status": "pending",
+  "current_policy_id": "guided-discovery",
+  "from_version": 1,
+  "candidate_version": 2,
+  "observations": [],
+  "decision_reason": "候选版本尚未进行独立试教，不能宣布优于 V1"
+}

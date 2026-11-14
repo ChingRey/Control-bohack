@@ -1,0 +1,165 @@
+{
+  "$defs": {
+    "TeachPhase": {
+      "enum": [
+        "diagnosis",
+        "knowledge_teaching",
+        "guided_practice",
+        "transfer_assessment",
+        "summary"
+      ],
+      "title": "TeachPhase",
+      "type": "string"
+    },
+    "TeachingAction": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "ask",
+            "explain",
+            "example",
+            "practice",
+            "hint",
+            "feedback",
+            "transfer"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "content": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Content",
+          "type": "string"
+        },
+        "knowledge_point_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Knowledge Point Ids",
+          "type": "array"
+        },
+        "evidence_refs": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "hint_level": {
+          "anyOf": [
+            {
+              "maximum": 4,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hint Level"
+        }
+      },
+      "required": [
+        "type",
+        "content",
+        "knowledge_point_ids"
+      ],
+      "title": "TeachingAction",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "0.2.1",
+      "default": "0.2.1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "request_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Request Id",
+      "type": "string"
+    },
+    "turn_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Turn Id",
+      "type": "string"
+    },
+    "decision_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Decision Id",
+      "type": "string"
+    },
+    "strategy_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Strategy Id",
+      "type": "string"
+    },
+    "strategy_version": {
+      "minimum": 1,
+      "title": "Strategy Version",
+      "type": "integer"
+    },
+    "strategy_selection_mode": {
+      "enum": [
+        "initial",
+        "continued",
+        "switched"
+      ],
+      "title": "Strategy Selection Mode",
+      "type": "string"
+    },
+    "strategy_selection_reason": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Strategy Selection Reason",
+      "type": "string"
+    },
+    "phase": {
+      "$ref": "#/$defs/TeachPhase"
+    },
+    "action": {
+      "$ref": "#/$defs/TeachingAction"
+    },
+    "next_recommendation": {
+      "enum": [
+        "wait_for_student",
+        "continue_teaching",
+        "request_evaluation",
+        "begin_transfer",
+        "finish_lesson"
+      ],
+      "title": "Next Recommendation",
+      "type": "string"
+    }
+  },
+  "required": [
+    "request_id",
+    "turn_id",
+    "decision_id",
+    "strategy_id",
+    "strategy_version",
+    "strategy_selection_mode",
+    "strategy_selection_reason",
+    "phase",
+    "action",
+    "next_recommendation"
+  ],
+  "title": "TeachingTurn",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://control.example.invalid/contracts/v0.2.1/teach_response.schema.json"
+}
