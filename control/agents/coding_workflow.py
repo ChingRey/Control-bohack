@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import json
+from . import skill_gateway
 
 def state(task):
     return task.setdefault('coding_workflow', {'revision':1, 'status':'planning',
@@ -18,6 +19,7 @@ def set_plan(task, steps):
         raise ValueError('请填写1–12个阶段，每行一个；每阶段结束后暂停')
     if task.get('plan'):raise ValueError('已确认计划不能被草稿覆盖')
     task['plan_draft']=[x.strip() for x in steps]
+    task.pop('plan_decision',None)
     task['stage']='planning'
     event(task,'plan_draft','学生提供阶段草稿；Teaching 可读取讨论，尚未执行')
 
@@ -31,8 +33,7 @@ def prepare(task, instruction, learning_context=None, knowledge_context=None):
     s=state(task)
     packet=copy.deepcopy(learning_context or {'rules':[],'skills':[]})
     packet['rules']=packet.get('rules',[]) if s['experience_enabled'] else []
-    # Future verified-skill resolver supplies bindings. Client cannot supply Skill bodies.
-    packet['skills']=[]
+    packet['skills']=[]  # Coding grows only through reviewed project knowledge; Skill loading disabled.
     payload={'contract_version':1,'task_id':task['id'],'phase_index':task['step'],
         'plan':task['plan'],'instruction':instruction,'stop_after_current_phase':True,
         'learning_context':packet,'project_knowledge':copy.deepcopy(knowledge_context or []),'capability_revision':s['revision']}
@@ -70,16 +71,33 @@ def sync_plan(task, text='', events=None):
             todos=tool_state.get('input',{}).get('todos',[])
             candidate=[x.get('content','').strip() for x in todos if isinstance(x,dict)]
             if candidate and all(candidate):rows=candidate
-    if not rows and re.search(r'开发计划|实施计划|阶段计划|实现计划|开发步骤|实施步骤',text):
+    if not rows and re.search(r'开发计划|实施计划|阶段计划|实现计划|开发步骤|实施步骤|开始规划|具体规划|计划如下|以下计划|制定.*计划|按照以下计划',text):
         for line in text.splitlines():
             match=re.match(r'^\s*(?:#{1,4}\s*)?(?:\*\*)?(?:(?:阶段|步骤)\s*[一二三四五六七八九十0-9]+\s*[：:.、)）-]|[0-9]+[.、)）]\s+)(.+)',line)
             if match:rows.append(match.group(1).strip().strip('*')[:300])
     if not 1<=len(rows)<=12:return False
     if rows==task.get('plan_draft') or rows==task.get('plan'):return False
     task['plan_draft']=rows
+    task.pop('plan_decision',None)
     state(task)['plan_source']='opencode_todos' if events and any(e.get('part',{}).get('tool')=='todowrite' for e in events) else 'assistant_explicit_plan'
     event(task,'plan_synced','聊天中的计划已同步，按原顺序显示')
     return True
+
+def message_intent(text):
+    """Recognize explicit file/command requests without treating '按计划创建' as planning."""
+    import re
+    readonly=bool(re.search(r'(?:只|仅|先|暂时)(?:讨论|分析|解释|规划)|(?:不要|别|暂不|不需要)(?:写|改|创建|生成|执行|开发)|(?:怎么|如何|能否|是否|能不能).{0,18}(?:创建|写入|修改|实现|开发)',text))
+    plan=bool(re.search(r'(?:制定|生成|讨论|调整|给出|设计|修改).{0,6}(?:计划|规划)|(?:计划|规划).{0,6}(?:怎么|如何|是否)',text))
+    edit=bool(re.search(r'开始|执行|实现|开发|修改|修复|写代码|写文件|继续|创建|新建|写入|编写|添加|删除|重命名|移动|安装|构建|运行|测试|create|write|implement|fix|build|install|rename|delete',text,re.I))
+    return 'execute' if edit and not (readonly or plan) else 'discuss'
+
+def development_authorized(text):
+    import re
+    return message_intent(text)=='execute' and bool(re.search(r'创建|新建|写入|编写|修改|修复|删除|重命名|开始|执行|动手|继续|create|write|implement|fix',text,re.I))
+
+def direct_file_request(text):
+    import re
+    return bool(re.search(r'^(?:(?:请|帮我|麻烦|直接|现在|立即|给我|请你|按计划|按照计划)\s*)*(?:创建|新建|写入|编写|修改|删除|重命名).{0,120}(?:[.](?:[cm]?js|tsx?|jsx|py|html|css|sql|json)|(?:JS|JavaScript|脚本)文件)',text,re.I))
 
 def accept_phase(task):
     s=state(task);i=task['step']
@@ -90,3 +108,9 @@ def accept_phase(task):
     task['step']+=1
     event(task,'phase_accepted','学生确认第'+str(i+1)+'阶段检查通过')
     s['status']='paused'
+
+
+def confirms_plan(text):
+    import re
+    text=re.sub(r'[\s。！!，,]+','',text)
+    return text in ('确认计划','就按这个计划','按这个计划做','符合','符合我的期望','计划没问题','我确认了','确认了','我确认','确认','可以就这样','就这样吧','没问题')

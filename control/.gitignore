@@ -15,3 +15,7 @@ tools/opencode/node_modules/
 tools/opencode-next/node_modules/
 
 data/coding-runs/
+data/write-verification/
+
+# Local sessions, verification caches and runtime logs must never be published.
+data/

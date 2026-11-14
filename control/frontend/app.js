@@ -8,7 +8,7 @@ function lines(){$('lines').textContent=$('code').value.split('\n').map((_,i)=>i
 function openFile(name){clearRowHighlight();if(hasCodeChanges()&&!confirm('当前文件尚未保存，放弃修改并切换？'))return;file=name;saved=task.files[file];$('code').value=saved;$('filename').textContent=file;lines();renderFiles()}
 function renderFiles(){$('files').replaceChildren();Object.keys(task.files).forEach(name=>{const b=document.createElement('button');b.className=name===file?'active':'';const icon=document.createElement('em');icon.textContent=name.endsWith('.js')?'JS':name.endsWith('.css')?'#':'<>';b.append(icon,document.createTextNode(name));b.onclick=()=>openFile(name);$('files').append(b)})}
 function render(){$('task-title').textContent=task.title||'新项目';$('project').textContent=task.title||'新项目';renderCodingWorkflow();if(!(file in task.files))file=Object.keys(task.files)[0]||'';renderFiles();saved=task.files[file]||'';$('code').value=saved;lines();$('filename').textContent=file||'空项目';$('code').disabled=!file;$('code').placeholder=file?'':'尚无文件，请在Coding聊天中描述你想开发的项目';$('save').disabled=!file;renderDevelopmentPlan();$('changes').textContent=task.changes.length?'已保存 '+task.changes.length+' 次代码修改':'尚无代码修改';renderChats();$('checks').textContent=task.checks.map(c=>(c.pass?'✓ ':'○ ')+c.name).join('\n');$('run').disabled=busy||!task.plan.length||task.step>=task.plan.length;renderTeacherStatus();if(previewTaskId&&previewTaskId!==task.id){runtimeObservations=[];previewTaskId=null;$('runtime-frame').src='about:blank';if(!$('runtime-panel').hidden)loadPreview()}$('connection').textContent='本地后端已连接 · SQLite 已保存';localStorage.setItem('control-workbench-task',task.id)}
-function setBusy(value){busy=value;document.querySelectorAll('form button,#run,#save,#review-teaching,#evaluate-teaching,#verify,#plan-confirm,#restart-example,#knowledge-topics button').forEach(b=>b.disabled=value);if(!value&&task){$('run').disabled=!task.plan.length||task.step>=task.plan.length;$('save').disabled=!file}}
+function setBusy(value){busy=value;document.querySelectorAll('form button,#run,#save,#review-teaching,#evaluate-teaching,#verify,#plan-confirm,#restart-example,#knowledge-topics button,.plan-choice').forEach(b=>b.disabled=value);if(!value&&task){$('run').disabled=!task.plan.length||task.step>=task.plan.length;$('save').disabled=!file}}
 async function waitForTeacher(){
  while(['queued','running'].includes(task.teaching_run?.status)||['queued','running'].includes(task.coding_run?.status)){
   await new Promise(r=>setTimeout(r,900));
@@ -146,7 +146,7 @@ function formatMessage(el,text){
 function messageNode(m,ch){displayedCodeRefs=m.code_refs||[];const div=document.createElement('div');div.className='msg '+m.role;const b=document.createElement('b');b.textContent=m.role==='user'?'你':ch==='coding'?(task.mode==='opencode'?(task.coding_provider?.configured?'Coding · OpenCode':'Coding · OpenCode（待配置）'):'Coding Agent · 示例'):m.engine==='model'?'Teaching Agent':'Teaching Agent · 示例';div.append(b);const content=document.createElement('div');content.className='message-content';if(m.role==='user'){const p=document.createElement('p');p.textContent=m.content;content.append(p)}else if(m.content.startsWith('Teaching Agent 暂时未完成本次分析：')){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='历史调用未完成（保留原始记录）';details.append(summary,document.createTextNode(m.content));content.append(details)}else formatMessage(content,m.content);div.append(content);return div}
 function waitingNode(text){const row=document.createElement('div');row.className='waiting';row.setAttribute('role','status');row.textContent='◌ '+text;return row}
 function renderChats(){
- for(const ch of ['coding','teaching']){const el=$(ch+'-messages');const nearBottom=el.scrollHeight-el.scrollTop-el.clientHeight<100;el.replaceChildren();task.messages.filter(m=>m.channel===ch).forEach(m=>el.append(messageNode(m,ch)));
+ for(const ch of ['coding','teaching']){const el=$(ch+'-messages');const nearBottom=el.scrollHeight-el.scrollTop-el.clientHeight<100;el.replaceChildren();const messages=task.messages.filter(m=>m.channel===ch);const lastAssistant=messages.findLastIndex(m=>m.role==='assistant');messages.forEach((m,index)=>{const node=messageNode(m,ch);if(ch==='coding'&&index===lastAssistant&&task.mode==='opencode'&&!task.plan.length&&task.plan_draft?.length){const decision=task.plan_decision;if(decision?.choice==='revise'){const note=document.createElement('p');note.className='plan-choice-note';note.textContent='✕ 已选择修改，等待你补充意见';node.append(note)}else node.append(planChoiceNode());}el.append(node)});
   if(ch==='coding'&&task.coding_run){const run=task.coding_run;if(['queued','running'].includes(run.status))el.append(waitingNode(run.detail||'Coding执行中'));if(run.status==='failed'){const error=document.createElement('p');error.className='reply-error';error.textContent=run.detail||'执行失败，阶段未推进';el.append(error)}}
   if(ch==='teaching'){
    const run=task.teaching_run;
@@ -253,10 +253,25 @@ $('export-learning').onclick=async()=>{
 function renderCodingWorkflow(){$('knowledge-enabled').checked=task.knowledge_enabled!==false;}
 $('coding-settings').onclick=()=>{$('settings-dialog').close();$('coding-settings-dialog').showModal()};
 $('coding-settings-close').onclick=()=>{$('coding-key').value='';$('coding-settings-dialog').close()};
-$('coding-connect').onclick=async()=>{try{await api('/settings/coding',{api_key:$('coding-key').value,model:$('coding-model').value.trim(),region:$('coding-region').value});$('coding-key').value='';$('coding-settings-dialog').close();task=await api('/tasks/'+task.id);render();toast('Coding配置已保存；实际调用尚待验证')}catch(e){toast(e.message)}};
+$('coding-connect').onclick=async()=>{try{await api('/settings/coding',{provider:$('coding-provider').value,api_key:$('coding-key').value,model:$('coding-model').value.trim(),region:$('coding-region').value});$('coding-key').value='';$('coding-settings-dialog').close();task=await api('/tasks/'+task.id);render();toast('Coding配置已保存；实际调用尚待验证')}catch(e){toast(e.message)}};
 
 
 $('open-learning').onclick=()=>$('learning-dialog').showModal();$('close-learning').onclick=()=>$('learning-dialog').close();
 const reviewCard=document.querySelector('.review-card');const reviewTitle=document.querySelector('.review-title');
 if(reviewCard&&reviewTitle){reviewCard.classList.add('collapsed');const toggleButton=document.createElement('button');toggleButton.type='button';toggleButton.className='review-toggle';toggleButton.textContent='查看审查';toggleButton.setAttribute('aria-expanded','false');reviewTitle.insertBefore(toggleButton,$('review-teaching'));const toggleReview=()=>{const collapsed=reviewCard.classList.toggle('collapsed');toggleButton.textContent=collapsed?'查看审查':'收起审查';toggleButton.setAttribute('aria-expanded',String(!collapsed))};toggleButton.onclick=toggleReview}
 
+
+$('coding-provider').onchange=()=>{$('coding-key').value='';$('coding-region-label').hidden=$('coding-provider').value==='siliconflow';$('coding-model').placeholder=$('coding-provider').value==='siliconflow'?'例如 Qwen/Qwen2.5-7B-Instruct':'填写账户可用的模型ID'};
+
+
+function planChoiceNode(){
+ const row=document.createElement('div');row.className='plan-choices';row.setAttribute('role','group');row.setAttribute('aria-label','确认开发计划');
+ const requestId=crypto.randomUUID(),expectedPlan=[...task.plan_draft],taskId=task.id;
+ const running=busy||['queued','running'].includes(task.coding_run?.status)||['queued','running'].includes(task.teaching_run?.status);
+ for(const [choice,label] of [['approve','✓ 可以，开始'],['revise','✕ 不行，继续修改']]){
+  const button=document.createElement('button');button.type='button';button.className='plan-choice '+choice;button.textContent=label;button.disabled=running;
+  button.onclick=async()=>{row.querySelectorAll('button').forEach(b=>b.disabled=true);const ok=await perform(()=>api('/tasks/'+taskId+'/coding/plan-decision',{choice,request_id:requestId,expected_plan:expectedPlan}));if(!ok)renderChats();if(ok&&choice==='revise'){$('coding-input').focus();$('coding-input').placeholder='告诉 Coding 哪些地方需要调整…'}};
+  row.append(button);
+ }
+ return row;
+}
