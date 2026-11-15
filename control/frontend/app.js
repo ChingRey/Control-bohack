@@ -7,13 +7,20 @@ function newRequestId(){
 let highlightedRows=null;
 let displayedCodeRefs=[];
 const $=id=>document.getElementById(id);let task=null,file='app.js',busy=false,saved='',confirmMode='step';
-function toast(text){$('toast').textContent=text;$('toast').style.display='block';clearTimeout(window.toastTimer);window.toastTimer=setTimeout(()=>$('toast').style.display='none',3500)}
+function toast(text){
+ const status=$('toast');
+ status.textContent=text;
+ status.style.display='block';
+ if(status.showPopover&&!status.matches(':popover-open'))status.showPopover();
+ clearTimeout(window.toastTimer);
+ window.toastTimer=setTimeout(()=>{status.hidePopover?.();status.style.display='none'},3500);
+}
 async function api(path,body){if(body&&task&&path.includes('/tasks/'+task.id+'/'))body={...body,runtime_observations:runtimeObservations};const r=await fetch('/api'+path,body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Error(data.error||'请求失败');return data}
 function hasCodeChanges(){return !!(task&&file&&Object.prototype.hasOwnProperty.call(task.files||{},file)&&$('code').value!==String(saved??''))}
 function lines(){$('lines').textContent=$('code').value.split('\n').map((_,i)=>i+1).join('\n');paintRowHighlight()}
 function openFile(name){clearRowHighlight();if(hasCodeChanges()&&!confirm('当前文件尚未保存，放弃修改并切换？'))return;file=name;saved=task.files[file];$('code').value=saved;$('filename').textContent=file;lines();renderFiles()}
 function renderFiles(){$('files').replaceChildren();Object.keys(task.files).forEach(name=>{const b=document.createElement('button');b.className=name===file?'active':'';const icon=document.createElement('em');icon.textContent=name.endsWith('.js')?'JS':name.endsWith('.css')?'#':'<>';b.append(icon,document.createTextNode(name));b.onclick=()=>openFile(name);$('files').append(b)})}
-function render(){const dirty=hasCodeChanges()&&task.files[file]!==$('code').value,draft=dirty?$('code').value:null,oldFile=file,oldSaved=saved;$('task-title').textContent=task.title||'新项目';$('project').textContent=task.title||'新项目';renderCodingWorkflow();if(!(file in task.files))file=Object.keys(task.files)[0]||'';renderFiles();saved=task.files[file]||'';$('code').value=saved;lines();$('filename').textContent=file||'空项目';$('code').disabled=!file;$('code').placeholder=file?'':'尚无文件，请在Coding聊天中描述你想开发的项目';$('save').disabled=!file;renderDevelopmentPlan();$('changes').textContent=task.changes.length?'已保存 '+task.changes.length+' 次代码修改':'尚无代码修改';renderChats();$('checks').textContent=task.checks.map(c=>(c.pass?'✓ ':'○ ')+c.name).join('\n');$('run').disabled=busy||!task.plan.length||task.step>=task.plan.length;renderTeacherStatus();if(previewTaskId&&previewTaskId!==task.id){runtimeObservations=[];previewTaskId=null;$('runtime-frame').src='about:blank';if(!$('runtime-panel').hidden)loadPreview()}$('connection').textContent='本地后端已连接 · SQLite 已保存';localStorage.setItem('control-workbench-task',task.id);if(dirty&&file===oldFile){$('code').value=draft;saved=oldSaved;lines()}if(window.renderWorkflow)window.renderWorkflow();if(window.renderTeachingEvolution)window.renderTeachingEvolution()}
+function render(){const dirty=hasCodeChanges()&&task.files[file]!==$('code').value,draft=dirty?$('code').value:null,oldFile=file,oldSaved=saved;$('task-title').textContent=task.title||'新项目';renderCodingWorkflow();if(!(file in task.files))file=Object.keys(task.files)[0]||'';renderFiles();saved=task.files[file]||'';$('code').value=saved;lines();$('filename').textContent=file||'空项目';$('code').disabled=!file;$('code').placeholder=file?'':'尚无文件，请在Coding聊天中描述你想开发的项目';$('save').disabled=!file;renderDevelopmentPlan();$('changes').textContent=task.changes.length?'已保存 '+task.changes.length+' 次代码修改':'尚无代码修改';renderChats();$('checks').textContent=task.checks.map(c=>(c.pass?'✓ ':'○ ')+c.name).join('\n');$('run').disabled=busy||!task.plan.length||task.step>=task.plan.length;renderTeacherStatus();if(previewTaskId&&previewTaskId!==task.id){runtimeObservations=[];previewTaskId=null;$('runtime-frame').src='about:blank';if(!$('runtime-panel').hidden)loadPreview()}$('connection').textContent='本地后端已连接 · SQLite 已保存';localStorage.setItem('control-workbench-task',task.id);if(dirty&&file===oldFile){$('code').value=draft;saved=oldSaved;lines()}if(window.renderWorkflow)window.renderWorkflow();if(window.renderTeachingEvolution)window.renderTeachingEvolution()}
 function setBusy(value){busy=value;document.querySelectorAll('#run,#save,#review-teaching,#evaluate-teaching,#verify,#plan-confirm,#restart-example,#knowledge-topics button,.plan-choice').forEach(b=>b.disabled=value);if(!value&&task){$('run').disabled=!task.plan.length||task.step>=task.plan.length;$('save').disabled=!file;renderChats()}}
 async function waitForCoding(){
  while(['coding_run','verification_run'].some(k=>['queued','running'].includes(task[k]?.status))){
@@ -115,6 +122,7 @@ function editProjectName(id,current){
 }
 async function showProjectHome(){
  document.body.classList.add('home-open');let home=$('project-home');
+ updateSettingsProjectChoices(null);
  if(!home){home=document.createElement('main');home.id='project-home';document.body.append(home)}
  const loadId=newRequestId();home.dataset.loadId=loadId;home.replaceChildren();
  const node=(tag,text,parent=home,cls='')=>{const n=document.createElement(tag);if(text!==null)n.textContent=text;if(cls)n.className=cls;parent.append(n);return n};
@@ -134,7 +142,7 @@ async function showProjectHome(){
  if(sessionStorage.getItem('control-home-intro-seen')||matchMedia('(prefers-reduced-motion: reduce)').matches){home.classList.add('intro-complete');skip.remove()}else{sessionStorage.setItem('control-home-intro-seen','1');setTimeout(()=>{if(home.isConnected&&home.dataset.loadId===loadId){home.classList.add('intro-complete');skip.remove()}},3900)}
  const nav=document.createElement('nav');nav.className='studio-navigation';nav.setAttribute('aria-label','项目分类');let active='all',draw=()=>{};
  const filters=[['all','全部项目','▦'],['active','进行中','◷'],['done','阶段已完成','✓']].map(([key,label,icon])=>{const button=node('button',null,nav,'studio-nav-item');button.type='button';node('span',icon,button,'studio-nav-icon');node('span',label,button);const count=node('span','—',button,'studio-nav-count');button.onclick=()=>{active=key;draw()};return {key,button,count}});
- const header=node('div',null,main,'studio-heading'),intro=node('div',null,header);node('h2','历史项目',intro);const library=node('button','经验库',header,'studio-library-button');library.type='button';library.onclick=()=>$('evolution-open').click();
+ const header=node('div',null,main,'studio-heading'),intro=node('div',null,header);node('h2','历史项目',intro);const library=node('button','教法经验库',header,'studio-library-button');library.type='button';library.onclick=()=>$('evolution-open').click();
  const resume=node('section',null,main,'studio-resume');main.insertBefore(resume,header);resume.setAttribute('aria-label','开启新项目');node('p','正在读取最近项目…',resume);
  const toolbar=node('div',null,main,'studio-toolbar'),label=node('div',null,toolbar,'studio-section-title');const sectionTitle=node('h2','全部项目',label);const total=node('span','—',label,'studio-total');label.classList.add('studio-accessible-heading');toolbar.append(nav);
  const searchBox=node('label',null,toolbar,'studio-search');node('span','⌕',searchBox);const search=node('input',null,searchBox);search.type='search';search.placeholder='搜索项目名称';search.setAttribute('aria-label','搜索项目');
@@ -144,6 +152,7 @@ async function showProjectHome(){
   const last=localStorage.getItem('control-workbench-task');projects.sort((a,b)=>(Number(b.updated_at)||0)-(Number(a.updated_at)||0));
   const done=p=>Number(p.phases)>0&&Number(p.step)>=Number(p.phases);
   const recent=projects.find(p=>p.id===last)||projects[0];if(recent){projects.splice(projects.indexOf(recent),1);projects.unshift(recent)}resume.replaceChildren();
+  updateSettingsProjectChoices(projects);
   const resumeIcon=node('div','↗',resume,'studio-resume-icon'),resumeCopy=node('div',null,resume,'studio-resume-copy');
   node('span','新的旅程',resumeCopy);node('h2','开启新项目',resumeCopy);node('p','带上一个想法，开启下一段探索。',resumeCopy);
   const resumeButton=node('button','开启新项目 ＋',resume,'studio-resume-button');resumeButton.onclick=createHomeProject;
@@ -170,10 +179,10 @@ async function showProjectHome(){
     const action=(text,fn)=>{const button=node('button',text,menu);button.type='button';button.onclick=()=>{more.open=false;fn()}};
     action('查看教学记录',()=>showProjectEvidence(project.id));action('重命名',()=>editProjectName(project.id,project.title));
     if(!project.student_id)action('关联到演示学生',async()=>{try{await api('/tasks/'+project.id+'/student/attach',{student_id:demoStudent.id,confirmed:true});showProjectHome()}catch(e){toast(e.message)}});
-    else node('span','共享经验库已连接',content,'studio-project-subtitle');
+    else node('span','教法经验库已连接',content,'studio-project-subtitle');
    });
   };search.oninput=draw;draw();
- }catch(e){if(home.dataset.loadId!==loadId)return;resume.replaceChildren();node('p','暂时无法读取项目记录，请检查本地后端。',resume);grid.replaceChildren();node('p','加载失败：'+e.message,grid);node('button','重新加载',grid).onclick=showProjectHome;footnote.textContent='项目记录仍保存在本地服务中'}
+ }catch(e){if(home.dataset.loadId!==loadId)return;updateSettingsProjectChoices([],e.message);resume.replaceChildren();node('p','暂时无法读取项目记录，请检查本地后端。',resume);grid.replaceChildren();node('p','加载失败：'+e.message,grid);node('button','重新加载',grid).onclick=showProjectHome;footnote.textContent='项目记录仍保存在本地服务中'}
 }
 
 
@@ -190,16 +199,77 @@ function renderTeacherStatus(){
  const questions=plan.open_questions||[];addReview('待验证',questions.length?questions.join('；'):'尚无额外待验证项','pending');
  const evidence=document.createElement('details');evidence.className='review-evidence';const summary=document.createElement('summary');summary.textContent='查看审查依据';const body=document.createElement('div');const warnings=last?.result?.validation_warnings||[];body.textContent=(plan.reason?'依据：'+plan.reason+'\n':'')+'掌握状态：'+(task.teaching?.assessment||'未检查')+'（候选掌握仍待复核）\n'+(warnings.length?'校验提醒：'+warnings.join('；'):'当前没有引用校验提醒')+'\n本轮仅使用只读材料，不代表已执行测试。';evidence.append(summary,body);review.append(evidence);
   document.querySelector('footer > span:last-child').textContent='真实文件与记录 · Coding OpenCode · 学习记录保存在本地';
- const phases={observe:'观察现象',explain:'解释原因',propose:'提出改法',verify:'设计验证',transfer:'迁移检查'};
- const phase=phases[task.teaching?.phase]||'观察现象';
- document.querySelector('.teacher-context').textContent='当前学习重点：'+(task.teaching?.plan?.goal||phase);
  const record=$('learning-record');
  if(record)record.textContent='当前掌握状态：'+(task.teaching?.assessment||'未检查')+'\n已记录 '+(task.teaching?.turns?.length||0)+' 轮教学反馈、'+task.changes.length+' 次代码修改。';
- const learningSummary=$('learning-summary');
- if(learningSummary)learningSummary.textContent=(task.teaching?.plan?.goal||'查看本项目的目标、证据与技术选学')+' · '+(task.teaching?.assessment||'未检查');
 }
 
 $('close-settings').onclick=()=>$('settings-dialog').close();
+function updateSettingsProjectChoices(projects,error){
+ const choice=$('settings-project-choice');
+ const available=!!projects?.length;
+ choice.replaceChildren(new Option(projects===null?'正在读取项目…':available?'请选择项目':'暂无可选项目',''));
+ for(const row of projects||[])choice.add(new Option(row.title||'未命名项目',row.id));
+ choice.disabled=!available;
+ $('settings-enter-project').disabled=true;
+ $('settings-new-project').hidden=projects===null||available||!!error;
+ $('settings-project-help').textContent=error?'项目列表读取失败，请从首页重新加载。':available||projects===null?'进入项目后即可使用下方的教学和项目工具。':'新建项目后即可使用下方的教学和项目工具。';
+}
+
+function syncSettingsProject(){
+ const active=!!task&&!document.body.classList.contains('home-open');
+ $('settings-project-picker').hidden=active;
+ const current=$('settings-current-project');
+ current.hidden=!active;
+ current.textContent=active?'当前项目 · '+(task.title||'未命名项目'):'';
+ for(const fieldset of $('settings-dialog').querySelectorAll('.settings-shortcuts'))fieldset.disabled=!active;
+}
+
+$('settings-project-choice').onchange=event=>{
+ $('settings-enter-project').disabled=!event.target.value;
+};
+$('settings-enter-project').onclick=async()=>{
+ const choice=$('settings-project-choice'),button=$('settings-enter-project');
+ if(!choice.value)return;
+ choice.disabled=button.disabled=true;
+ try{
+  await enterProject(choice.value);
+  syncSettingsProject();
+  if(!$('settings-current-project').hidden)$('settings-teaching-shortcuts').querySelector('button').focus();
+ }finally{choice.disabled=button.disabled=false}
+};
+$('settings-new-project').onclick=()=>{
+ $('settings-dialog').close();
+ createHomeProject();
+};
+for(const shortcut of $('settings-dialog').querySelectorAll('[data-settings-action]')){
+ shortcut.onclick=()=>{
+  const action=shortcut.dataset.settingsAction;
+  if(action==='show-teaching-references'){
+   $('settings-dialog').close();
+   $('teaching-tools-settings').open=true;
+   const references=$('teaching-references');
+   references.open=true;
+   references.querySelector('summary').focus();
+   references.scrollIntoView({block:'nearest',inline:'nearest'});
+   return;
+  }
+  const target=$(action);
+  if(target.disabled){toast('当前没有可保存的代码文件。');return}
+  $('settings-dialog').close();
+  target.click();
+ };
+}
+$('project-tools-open').onclick=()=>{
+ if(task)$('project-tools-dialog').showModal();
+};
+$('close-project-tools').onclick=()=>$('project-tools-dialog').close();
+$('show-development-plan').onclick=()=>{
+ $('project-tools-dialog').close();
+ if(document.body.classList.contains('sidebar-collapsed'))$('sidebar-toggle').click();
+ const plan=$('plan-panel');
+ plan.focus({preventScroll:true});
+ plan.scrollIntoView({block:'nearest',inline:'nearest'});
+};
 
 
 $('review-teaching').onclick=()=>perform(()=>api('/tasks/'+task.id+'/teaching/review',{}));
@@ -284,8 +354,39 @@ function formatMessage(el,text){
 }
 function messageNode(m,ch){displayedCodeRefs=m.code_refs||[];const div=document.createElement('div');div.className='msg '+m.role;const b=document.createElement('b');b.textContent=m.role==='user'?'你':ch==='coding'?(task.mode==='opencode'?(task.coding_provider?.configured?'Coding · OpenCode':'Coding · OpenCode（待配置）'):'Coding Agent · 示例'):m.engine==='model'?'Teaching Agent':'Teaching Agent · 示例';div.append(b);const content=document.createElement('div');content.className='message-content';if(m.role==='user'){const p=document.createElement('p');p.textContent=m.content;content.append(p)}else if(m.content.startsWith('Teaching Agent 暂时未完成本次分析：')){const details=document.createElement('details');const summary=document.createElement('summary');summary.textContent='历史调用未完成（保留原始记录）';details.append(summary,document.createTextNode(m.content));content.append(details)}else formatMessage(content,m.content);div.append(content);if(m.execution_status==='failed_no_changes'){const note=document.createElement('p');note.className='reply-error';note.textContent='本轮没有实际文件改动，阶段未完成。以上为模型原话，不代表已经执行成功。';div.append(note)}if(m.execution_warnings?.length){const warning=document.createElement('details');const title=document.createElement('summary');title.textContent='部分工具调用未成功，实际文件已保存，请验收时检查';warning.append(title,document.createTextNode(m.execution_warnings.map(x=>x.tool+'：'+x.error).join('\n')));div.append(warning)}if(ch==='coding'&&m.phase_report){const report=document.createElement('p');report.className='plan-choice-note';report.textContent='本轮对应计划 '+(m.phase_report.index+1)+'：'+m.phase_report.title+(task.coding_workflow?.checkpoints?.[m.phase_report.index]?.status==='accepted_by_student'?' · 验收通过':' · 已执行，待学生验收');div.append(report)}return div}
 function waitingNode(text){const row=document.createElement('div');row.className='waiting';row.setAttribute('role','status');row.textContent='◌ '+text;return row}
+function chatRetryNode(message){
+ const box=document.createElement('div');box.className='reply-error';
+ const detail=document.createElement('p');detail.textContent=message.queue_error||'这条消息已保存，可以重试。';
+ const retry=document.createElement('button');retry.type='button';retry.textContent='重试这条消息';
+ retry.onclick=async()=>{
+  const projectId=task.id;
+  retry.disabled=true;
+  try{
+   const next=await api('/tasks/'+projectId+'/chat/retry',{request_id:message.request_id});
+   if(task?.id!==projectId)return;
+   task=next;render();pollChat();
+  }catch(e){toast(e.message)}
+  finally{retry.disabled=false}
+ };
+ box.append(detail,retry);return box;
+}
 function renderChats(){
- for(const ch of ['coding','teaching']){const el=$(ch+'-messages');const nearBottom=el.scrollHeight-el.scrollTop-el.clientHeight<100;el.replaceChildren();const messages=task.messages.filter(m=>m.channel===ch);const lastAssistant=messages.findLastIndex(m=>m.role==='assistant');messages.forEach((m,index)=>{const node=messageNode(m,ch);if(ch==='coding'&&index===lastAssistant&&task.mode==='opencode'){const allPhasesAccepted=task.plan?.length>0&&task.step>=task.plan.length;const choice=!task.plan.length&&task.plan_draft?.length?planChoiceNode():currentPhaseCheckpoint()?phaseChoiceNode():!allPhasesAccepted&&task.capabilities?.coding_reply_accept&&messages.slice(0,index).some(row=>row.role==='user'&&!['queued','needs_retry'].includes(row.queue_status))?replyChoiceNode(m):null;if(choice)node.append(choice);}el.append(node)});
+ for(const ch of ['coding','teaching']){
+  const el=$(ch+'-messages');const nearBottom=el.scrollHeight-el.scrollTop-el.clientHeight<100;
+  el.replaceChildren();
+  const messages=task.messages.filter(m=>m.channel===ch);
+  const lastAssistant=messages.findLastIndex(m=>m.role==='assistant');
+  messages.forEach((m,index)=>{
+   const node=messageNode(m,ch);
+   if(ch==='coding'&&index===lastAssistant&&task.mode==='opencode'){
+    const allPhasesAccepted=task.plan?.length>0&&task.step>=task.plan.length;
+    const hasDeliveredMessage=messages.slice(0,index).some(row=>row.role==='user'&&!['queued','needs_retry'].includes(row.queue_status));
+    const choice=!task.plan.length&&task.plan_draft?.length?planChoiceNode():currentPhaseCheckpoint()?phaseChoiceNode():!allPhasesAccepted&&task.capabilities?.coding_reply_accept&&hasDeliveredMessage?replyChoiceNode(m):null;
+    if(choice)node.append(choice);
+   }
+   el.append(node);
+   if(m.queue_status==='needs_retry')el.append(chatRetryNode(m));
+  });
   if(ch==='coding'&&task.coding_run){const run=task.coding_run;if(['queued','running'].includes(run.status))el.append(waitingNode((run.detail||'Coding执行中')+' · '+Math.max(0,Math.floor(Date.now()/1000-run.started_at))+' 秒'+(run.model_rounds?' · 已完成 '+run.model_rounds+' 次模型生成':'')+(run.completed_tools?' · '+run.completed_tools+' 次工具操作完成':'')));if(run.status==='failed'){const error=document.createElement('p');error.className='reply-error';error.textContent=run.detail||'执行失败，阶段未推进';el.append(error)}}
   if(ch==='teaching'){
    const run=task.teaching_run;
@@ -331,7 +432,7 @@ document.querySelectorAll('.splitter').forEach(handle=>{
  handle.onpointerdown=e=>{if(e.button!==0)return;e.preventDefault();handle.setPointerCapture(e.pointerId);let lastX=e.clientX,lastY=e.clientY;document.body.classList.add('resizing');handle.onpointermove=event=>{if(!handle.hasPointerCapture(event.pointerId))return;if(handle.dataset.split==='height'){const height=document.querySelector('.center').clientHeight;adjust((event.clientY-lastY)/height*100);lastY=event.clientY}else{adjust(event.clientX-lastX);lastX=event.clientX}};const stop=()=>{document.body.classList.remove('resizing');handle.onpointermove=null;persistLayout()};handle.onpointerup=stop;handle.onlostpointercapture=stop;};
  handle.onkeydown=e=>{const height=handle.dataset.split==='height';const minus=height?'ArrowUp':'ArrowLeft',plus=height?'ArrowDown':'ArrowRight';if(e.key===minus||e.key===plus){e.preventDefault();adjust((e.key===plus?1:-1)*(height?3:20));persistLayout()}};
 });
-$('open-settings').onclick=()=>$('settings-dialog').showModal();window.addEventListener('resize',applyLayout);applyLayout();
+$('open-settings').onclick=()=>{syncSettingsProject();$('settings-dialog').showModal()};window.addEventListener('resize',applyLayout);applyLayout();
 function planProgress(){
  const steps=(task.plan?.length?task.plan:task.plan_draft)||[];
  if(task.plan?.length)return steps.map((text,i)=>{const status=task.coding_workflow?.checkpoints?.[i]?.status;return {text,state:status==='accepted_by_student'?'done':status==='executed_pending_review'?'review':i===task.step?'active':'pending'}});

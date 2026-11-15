@@ -62,7 +62,7 @@ with tempfile.TemporaryDirectory() as folder,patch.object(b,'DATA',Path(folder))
  await assert('Teacher retains one streamed call and measured timings',`task.teaching.turns.at(-1).request_attempts===1&&task.teaching.turns.at(-1).request_timings[0].first_content_seconds>=0`);
  await assert('no hidden reasoning appears in teaching chat',`!document.querySelector('#teaching-messages').textContent.includes('fixture private reasoning')&&document.querySelector('#teaching-messages').textContent.includes('分数是保存当前结果的变量')`);
  await assert('experience and prepared source versions remain traceable',`task.teaching_run.experience_context.revision>=1&&task.teaching_run.context_materials.source_lines>0&&task.teaching.turns.at(-1).experience_context.validation_focus!==undefined`);
- await assert('experience matrix entry and layout survive integration',`document.querySelector('#evolution-open').textContent==='经验库'&&!!document.querySelector('#coding-reset')`);
+ await assert('experience matrix entry and layout survive integration',`document.querySelector('#evolution-open').textContent==='教法经验库'&&!!document.querySelector('#coding-reset')`);
  '''.replace('PROJECT_ID',json.dumps(t['id']))
  source=source.replace('  if(packet.screenshot){',checks+'\n  if(packet.screenshot){',1)
  (probe/'scripts/browser_cases.cjs').write_text(source,encoding='utf8')

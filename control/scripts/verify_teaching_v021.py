@@ -105,12 +105,9 @@ def main():
      return super().do_GET()
    cases=[]
    def step(action,selector=None,**kw):cases.append({'action':action,**({'selector':selector} if selector else {}),**kw})
-   def pause():step('wait',ms=350)
-   step('wait',ms=700);step('click','#open-settings');step('click','#teaching-tools-settings > summary');step('click','#open-v021');step('fill','#v021-token',value=token);step('click','#v021-login');pause()
-   step('assert_text','#v021-status',text='当前策略');step('assert_value','#v021-token',value='')
-   step('click','#v021-decide');pause();step('click','#v021-teach');pause();step('assert_text','#v021-result',text='学习目标')
-   step('fill','#v021-message',value='我会检查购物车操作和边界条件。');step('click','#v021-respond');pause()
-   step('click','#v021-formative');pause();step('assert_text','#v021-result',text='MOCK');step('click','#v021-teach');pause();step('assert_text','#v021-status',text='已执行动作：5')
+   step('wait',ms=700);step('click','#open-settings')
+   step('assert_exists','#open-learning')
+   step('assert_absent','#open-v021,#v021-dialog,script[src^="/teaching-v021.js"]')
    browser=browser_runner.run({}, {},cases,handler=BrowserHandler,screenshot=report_path/'v021-browser.png')
    assert browser['passed'],browser
    report={'windows_asyncio_native_http':True,'real_http':True,'actual_opencode_cli':True,'pause_resume_once':True,'project_files':['src/products.js','src/cart.js'],

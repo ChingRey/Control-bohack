@@ -115,14 +115,9 @@ body.resizing textarea{pointer-events:none}
 
 #experience-dialog .experience-auto-option{display:flex;align-items:center;gap:8px;margin:12px 0}#experience-dialog .experience-auto-option input{width:auto;margin:0}#experience-dialog details{margin:8px 0}#experience-dialog p{overflow-wrap:anywhere}
 
-/* Teaching sidebar is chat-only; auxiliary controls live in Settings. */
+/* Teaching conversation fills the available sidebar height. */
 .teaching{grid-template-rows:minmax(0,1fr);gap:0;padding:10px}
 .teaching>.teacher-dialog{grid-row:1}
-#settings-dialog{max-height:88vh;overflow:auto}
-#teaching-tools-settings{margin:14px 0;padding:10px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
-#teaching-tools-settings>summary{cursor:pointer;padding:6px 0}
-#teaching-tools-settings .teaching-overview{overflow:visible}
-#teaching-tools-settings .teacher-head{flex-wrap:wrap}
 
 /* File/plan sidebar and movable Coding overlay. No API changes. */
 .workspace{grid-template-columns:260px minmax(420px,1fr) 6px var(--teacher);min-width:1036px}
@@ -156,11 +151,6 @@ body.resizing textarea{pointer-events:none}
 .floating-coding.is-minimized{min-height:52px;resize:none}
 .floating-coding.is-minimized .messages,.floating-coding.is-minimized form{display:none}
 .floating-coding.is-dragging{resize:none}
-#workspace-tools-settings{margin:12px 0;border-top:1px solid var(--border);padding-top:12px}
-#workspace-tools-settings>summary{cursor:pointer;padding:6px 0}
-#workspace-tools-settings .task-strip{display:block}
-#workspace-tools-settings .knowledge-section{margin:12px 0;padding:12px 0;max-height:360px;overflow:auto}
-#workspace-tools-settings .flow-navigation{padding:10px 0}
 .sidebar-collapsed .files{grid-template-rows:auto minmax(0,1fr)}
 .sidebar-collapsed .files>#plan-panel{display:none}
 @media(max-width:1150px){.workspace{grid-template-columns:230px minmax(420px,1fr) 6px var(--teacher)}}
@@ -358,7 +348,8 @@ body.home-open>#project-home{display:block;grid-row:2}
 .experience-library .library-header h2{font-size:20px;margin-right:auto}
 .experience-library .library-header button{font-size:12px;padding:8px 12px;background:transparent;border:1px solid #405261;border-radius:9px}
 .experience-library .library-header .library-close{font-size:22px;line-height:1;padding:4px 8px;border:0;color:#9eafbc}
-.experience-library .library-highlight-toggle[aria-pressed=true]{background:#ed8f9b14;border-color:#e69aa647;color:#ecc1c7}
+.experience-library .library-highlight-toggle[aria-pressed=true]{background:#163d53;border-color:#609cbc;color:#b5eeff}
+.experience-library .library-highlight-toggle:disabled{opacity:1;color:#aec1d4;cursor:default}
 .library-notice:empty{display:none}
 .library-matrix{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
 .experience-library .library-entry{box-sizing:border-box;min-width:0;margin:0;padding:0;border-radius:12px;background:#192733;border:1px solid #354956;transition:background .18s,border-color .18s}
@@ -367,8 +358,9 @@ body.home-open>#project-home{display:block;grid-row:2}
 .library-entry>summary strong{font-size:14px;line-height:1.65;font-weight:550;overflow-wrap:anywhere}
 .experience-library .library-entry>summary small{font-size:10px;color:#899ca9;line-height:1.5}
 .experience-library .library-entry:hover{border-color:#6c8b86}
-.experience-library .library-entry.is-current-change{background:rgba(224,125,143,.10);border-color:rgba(227,148,163,.35)}
-.experience-library .library-entry.is-current-change>summary strong{color:#edbdc6}
+.experience-library.show-reflection-changes .library-entry.is-current-change{background:#203f53;border-color:#70b9d7}
+.library-change-badge{display:none}
+.show-reflection-changes .library-change-badge{display:inline-block;align-self:flex-start;padding:2px 6px;border-radius:4px;background:#0e2d40;color:#a6ecff;font-size:11px}
 .experience-library .library-entry[open]{grid-column:1/-1}
 .experience-library .library-entry[open]>summary{min-height:64px;padding:14px 18px;border-bottom:1px solid #ffffff0b}
 .library-entry-content{padding:4px 18px 18px;font-size:13px}
@@ -547,6 +539,27 @@ body.home-open>#project-home{display:block;grid-row:2}
 
 #project-home .studio-library-button{border-radius:22px;padding:9px 18px;white-space:nowrap;background:#182a37;color:#c6e9ff;border-color:#52708660}
 @media(max-width:620px){#project-home .studio-navigation{max-width:100%;overflow-x:auto}#project-home .studio-hero-copy h1{font-size:clamp(23px,7.7vw,31px)}#project-home .studio-heading{gap:10px}#project-home .studio-menu{right:0}}
+
+/* Contrast for the project homepage starfield and its content. */
+#project-home{background:#101824}
+#project-home .studio-starlayer{
+  background:radial-gradient(ellipse at 28% 16%,#22344f 0%,#172439 28%,transparent 63%);
+}
+#project-home .studio-star-mid{opacity:.60}
+#project-home .studio-star-near{opacity:.48}
+#project-home .studio-orbit-one{border-color:#9fc8ef56}
+#project-home .studio-orbit-two{border-color:#c6b2f95c}
+#project-home .studio-core{
+  background:linear-gradient(140deg,#304e6c,#172338 75%);
+  border-color:#9ac7ef9c;
+}
+#project-home .studio-hero-subtitle{color:#c1cedc}
+#project-home .studio-resume{
+  background:linear-gradient(105deg,#22394e,#192735 75%);
+  border-color:#4a657e;
+}
+#project-home .studio-project{background:#192737;border-color:#435970}
+#project-home .studio-project-subtitle{color:#aec0d1}
 
 /* Explicit segment states override the handoff's earlier continuous progress bar. */
 #project-home .studio-progress>.studio-phase-segment{background:#273540;opacity:1}

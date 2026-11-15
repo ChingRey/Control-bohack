@@ -396,7 +396,7 @@ def message(t, channel, role, content):
 
 def start_coding(t, instruction, planning=False, chatting=False, checkpoint_operation=None):
  if not opencode_executor.metadata()['configured']:raise ValueError('请先连接Coding模型')
- if not opencode_executor.binary():raise ValueError('OpenCode尚未安装')
+ if not opencode_executor.binary():raise ValueError('OpenCode尚未安装，请在运行工作台的电脑上执行 scripts/install_opencode.ps1')
  supersede_teaching(t)
  job={'id':str(uuid.uuid4()),'status':'running','detail':'Coding Agent正在处理当前阶段…','started_at':time.time(),'queue_request_id':t.pop('_queue_launch_id',None)}
  if checkpoint_operation is not None:
@@ -585,8 +585,10 @@ def drain_chat(tid):
     t.pop('_queue_launch_id',None)
     message(t,'coding','assistant','示例模式不执行任意开发指令，请连接Coding模型。');save(t)
     threading.Thread(target=drain_chat,args=(tid,),daemon=True).start()
-  except Exception:
-   row['queue_status']='needs_retry';save(t)
+  except Exception as exc:
+   t.pop('_queue_launch_id',None)
+   row.update(queue_status='needs_retry',queue_error=background_error(exc)['error'])
+   save(t)
 
 
 def dispatch_coding_message(t, text, request_id=None):
@@ -914,7 +916,7 @@ class Handler(BaseHTTPRequestHandler):
     if not safe_preview_name(parts[2]): return self.reply(404,{'error':'文件不存在'})
     return self.reply(200,p.read_bytes(),mimetypes.guess_type(p.name)[0] or 'text/plain')
    name='index.html' if parts==[''] else '/'.join(parts)
-   if name not in ['index.html','app.js','workflow.js','evolution.js','teaching-v021.js','style.css','strategy-trials.js','strategy-evolution-view.js','strategy-simulation.js','model-settings.js','strategy-trials.css']: return self.reply(404,{'error':'地址不存在'})
+   if name not in ['index.html','app.js','workflow.js','evolution.js','teaching-v021.js','style.css','strategy-trials.js','strategy-evolution-view.js','strategy-simulation.js','model-settings.js','strategy-trials.css','workbench-tools.css']: return self.reply(404,{'error':'地址不存在'})
    p=ROOT/'frontend'/name
    return self.reply(200,p.read_bytes(),(mimetypes.guess_type(name)[0] or 'text/plain')+'; charset=utf-8')
   except teaching_v021.AccessDenied as e:self.reply(403,{'error':str(e)})
@@ -1043,6 +1045,7 @@ class Handler(BaseHTTPRequestHandler):
      if action=='chat/retry':
       row=next((m for m in t['messages'] if m.get('request_id')==body.get('request_id')),None)
       if not row or row.get('queue_status')!='needs_retry':raise ValueError('没有需要重试的排队消息')
+      row.pop('queue_error',None)
       row['queue_status']='queued';save(t);drain_chat(t['id']);return self.reply(202,snapshot(load(t['id'])))
      if t.get('verification_run',{}).get('status')=='running':raise ValueError('验证正在进行，请稍后修改；聊天仍可发送')
      if t.get('coding_run',{}).get('status') in ('queued','running'):raise ValueError('Coding正在执行，请稍等')

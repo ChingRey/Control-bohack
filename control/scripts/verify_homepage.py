@@ -25,18 +25,33 @@ with tempfile.TemporaryDirectory() as temp,patch.object(b,'DATA',Path(temp)),pat
  checks='''
  const assert=async(name,expression)=>{const ok=await evaluate(expression);results.push({name,passed:!!ok});if(!ok)throw Error(name)};
  const wait=ms=>new Promise(r=>setTimeout(r,ms));
- await evaluate(`enterProject(FIRST_ID)`);await wait(400);
+ const snapshot=async name=>{
+  const shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});
+  fs.writeFileSync(packet.screenshot.replace('.png','-'+name+'.png'),Buffer.from(shot.data,'base64'));
+ };
+ await evaluate(`document.querySelector('#open-settings').click()`);
+ await assert('homepage settings keep project shortcuts and offer the existing projects',`document.querySelector('#settings-dialog').open&&document.querySelector('#settings-project-shortcuts').disabled&&document.querySelector('#settings-project-choice').options.length===3`);
+ await assert('official settings omit the v021 console',`document.querySelector('#settings-dialog').open&&document.querySelector('.teaching #open-learning')&&!document.querySelector('#open-v021,#v021-dialog,script[src^="/teaching-v021.js"]')`);
+ await evaluate(`(()=>{const select=document.querySelector('#settings-project-choice');select.value=FIRST_ID;select.dispatchEvent(new Event('change'));return document.querySelector('#settings-enter-project').onclick()})()`);
+ await assert('entering a project in settings enables the existing shortcuts',`task.id===FIRST_ID&&document.querySelector('#settings-dialog').open&&!document.querySelector('#settings-project-shortcuts').disabled&&!document.querySelector('#settings-teaching-shortcuts').disabled`);
+ await snapshot('settings');
+ await evaluate(`document.querySelector('[data-settings-action="open-lesson-cards"]').click()`);
+ await assert('settings opens the real lesson card chooser',`!document.querySelector('#settings-dialog').open&&document.querySelector('#lesson-topics-dialog').open&&document.querySelector('#teaching-library-choice').options.length===21`);
+ await evaluate(`document.querySelector('#close-lesson-topics').click();document.querySelector('#open-settings').click();document.querySelector('[data-settings-action="show-development-plan"]').click()`);
+ await assert('settings opens and focuses the development plan',`!document.querySelector('#settings-dialog').open&&document.activeElement.id==='plan-panel'&&document.querySelector('#steps').textContent.includes('实现计分')`);
  await evaluate(`document.querySelector('#evolution-open').click()`);await wait(450);
  await assert('opens all fifteen experiences as collapsed matrix cards',`document.querySelector('#experience-dialog').open&&document.querySelectorAll('.library-entry').length===15&&document.querySelectorAll('.library-entry[open]').length===0`);
- await assert('only current changes toggle and close remain in header',`document.querySelectorAll('.library-header button').length===2&&document.querySelector('.library-highlight-toggle').textContent==='本轮经验变更'&&!document.querySelector('.library-toolbar')`);
+ await assert('preset import has no reflection highlights',`document.querySelectorAll('.library-header button').length===2&&document.querySelector('.library-highlight-toggle').disabled&&document.querySelectorAll('.is-current-change').length===0`);
+ await snapshot('presets');
  await assert('dialog is compact and matrix has three columns',`document.querySelector('#experience-dialog').getBoundingClientRect().width<=760&&getComputedStyle(document.querySelector('.library-matrix')).gridTemplateColumns.split(' ').length===3`);
  await assert('collapsed cards contain title and repository source only in summary',`[...document.querySelectorAll('.library-entry')].every(c=>c.querySelector('summary strong')&&c.querySelector('summary small').textContent.includes('加入')&&getComputedStyle(c.querySelector('summary')).minHeight==='104px')`);
- await evaluate(`document.querySelector('.library-highlight-toggle').click()`);
- await assert('toggle removes all red highlights',`document.querySelectorAll('.is-current-change').length===0&&document.querySelector('.library-highlight-toggle').getAttribute('aria-pressed')==='false'`);
- await evaluate(`document.querySelector('.library-highlight-toggle').click()`);
- await assert('toggle restores latest batch highlights',`document.querySelectorAll('.is-current-change').length>0`);
  await evaluate(`api('/tasks/'+task.id+'/teaching/experience-review',{}).then(t=>{task=t;render();pollChat()})`);await wait(2300);
- await assert('new reflection appears first and is the only highlighted card',`document.querySelector('.library-entry').dataset.entryId.startsWith('exp-')&&document.querySelectorAll('.is-current-change').length===1`);
+ await assert('new reflection appears first and is the only highlighted card',`document.querySelector('.library-entry').dataset.entryId.startsWith('exp-')&&document.querySelectorAll('.is-current-change').length===1&&document.querySelector('.show-reflection-changes .is-current-change .library-change-badge').textContent==='最近反思变更'`);
+ await snapshot('reflection');
+ await evaluate(`document.querySelector('.library-highlight-toggle').focus();document.querySelector('.library-highlight-toggle').click()`);
+ await assert('toggle hides the reflection marker and keeps keyboard focus',`document.activeElement===document.querySelector('.library-highlight-toggle')&&document.activeElement.getAttribute('aria-pressed')==='false'&&getComputedStyle(document.querySelector('.library-change-badge')).display==='none'`);
+ await evaluate(`document.querySelector('.library-highlight-toggle').click()`);
+ await assert('toggle restores the reflection marker',`getComputedStyle(document.querySelector('.library-change-badge')).display!=='none'`);
  await assert('latest versions are ordered above older versions',`[...document.querySelectorAll('.library-entry')].every((c,i,arr)=>!i||Number(arr[i-1].dataset.version)>=Number(c.dataset.version))`);
  await evaluate(`document.querySelector('.library-entry>summary').click()`);await wait(100);
  await assert('opening a card reveals strategy evidence and undo',`document.querySelector('.library-entry').open&&document.querySelector('.library-entry').textContent.includes('75分')&&document.querySelector('.library-entry .library-undo-entry')`);
@@ -52,6 +67,7 @@ with tempfile.TemporaryDirectory() as temp,patch.object(b,'DATA',Path(temp)),pat
  await evaluate(`const c=document.querySelector('.library-entry[data-entry-id^="exp-"]');c.querySelector('summary').click();c.querySelector('.library-entry-content>details').open=true;`);await wait(100);
  await assert('actual teaching reply remains available inside details',`document.querySelector('.library-entry[data-entry-id^="exp-"]').textContent.includes('检测到跨项目试用经验')`);
  await evaluate(`document.querySelector('.library-entry[data-entry-id^="exp-"] .library-undo-entry').click()`);await wait(700);
+ await assert('undo clears the reflection marker',`!document.querySelector('.library-change-badge')&&document.querySelector('.library-highlight-toggle').disabled`);
  await assert('undo still retains scores and marks experience inactive',`document.querySelector('.library-entry[data-entry-id^="exp-"]').textContent.includes('已停用')&&document.querySelector('.library-entry[data-entry-id^="exp-"]').textContent.includes('75分')`);
  await evaluate(`document.querySelectorAll('.library-entry[open]').forEach(c=>c.querySelector('summary').click())`);await wait(100);
  await assert('new experience names its source repository instead of a version',`document.querySelector('.library-entry[data-entry-id^="exp-"]>summary').textContent.includes('计分项目 · 加入')&&!document.querySelector('.library-entry[data-entry-id^="exp-"]>summary').textContent.includes('版')`);

@@ -135,6 +135,27 @@ class MoreWorkflowChecks(unittest.TestCase):
 
 
 class QueueFailureChecks(unittest.TestCase):
+ def test_missing_opencode_reports_reason_and_retries_saved_message(self):
+  h=fixture.CheckpointIntegrationTests();h.setUp();self.addCleanup(h.doCleanups)
+  body={'channel':'coding','message':'你好','request_id':'missing-opencode'}
+  with patch.object(b.opencode_executor,'binary',return_value=None):
+   status,snapshot=h.call(h.path+'/chat/send',body)
+  self.assertEqual(status,202)
+  failed=next(m for m in snapshot['messages'] if m.get('request_id')==body['request_id'])
+  self.assertEqual(failed['queue_status'],'needs_retry')
+  self.assertIn('OpenCode尚未安装',failed['queue_error'])
+  self.assertIn('scripts/install_opencode.ps1',failed['queue_error'])
+  self.assertNotIn('coding_run',snapshot)
+  def respond(files,*args):return {'text':'你好！','files':files,'events':[]}
+  with patch.object(b.opencode_executor,'execute',side_effect=respond):
+   self.assertEqual(h.call(h.path+'/chat/retry',{'request_id':body['request_id']})[0],202)
+   task=h.wait()
+  self.assertEqual(task['coding_run']['status'],'completed')
+  messages=[m for m in task['messages'] if m.get('request_id')==body['request_id']]
+  self.assertEqual(len(messages),1)
+  self.assertNotIn('queue_error',messages[0])
+  self.assertEqual(messages[0]['queue_status'],'delivered')
+
  def test_failed_model_message_is_saved_and_explicitly_retryable(self):
   h=fixture.CheckpointIntegrationTests();h.setUp();self.addCleanup(h.doCleanups)
   with patch.object(b.opencode_executor,'execute',side_effect=ValueError('fixture model unavailable')):

@@ -27,12 +27,33 @@ function renderFlowReview(){const s=task.workflow;$('flow-features').replaceChil
  $('flow-rules').replaceChildren();for(const rule of s.rules||[]){const p=document.createElement('p');p.append(document.createTextNode(`${rule.title}（v${rule.revision} · ${rule.status}） ${rule.content}；适用：${rule.when}；边界：${rule.limits} `));p.append(flowButton(rule.status==='active'?'停用':'启用',()=>perform(()=>api('/tasks/'+task.id+'/workflow/rules/status',{rule_id:rule.id,status:rule.status==='active'?'inactive':'active',expected_revision:task.workflow.revision}))));$('flow-rules').append(p)}
  const levels={unknown:'尚无证据',explained:'已讲解',practiced:'已练习（待核实）',independent_candidate:'独立表现建议（待核实）'};$('flow-concepts').textContent=Object.entries(s.concepts||{}).map(([n,r])=>`${n}：${levels[r.status]||r.status}`).join('；');$('flow-organize-status').textContent=task.organizer_run?.detail||'';
 }
-window.renderWorkflow=()=>{renderTeachingReferences();const s=task.workflow;if(!s)return;if(task.mode==='opencode'){document.querySelector('.teacher-context').textContent='当前阶段：'+workflowStages[s.stage];$('learning-summary').textContent='材料、验证证据与项目经验';$('learning-record').textContent='已记录 '+(task.teaching?.turns?.length||0)+' 轮交流；概念观察待核实，不自动认证掌握。';$('course-overview').textContent='当前阶段：'+workflowStages[s.stage]+'；当前功能：'+(s.features?.find(r=>r.id===s.current_feature_id)?.title||'尚未选定')}const queued=task.messages.filter(m=>m.queue_status==='queued').length;$('flow-status').textContent=`${workflowStages[s.stage]}${queued?' · 排队 '+queued+' 条':''}`;$('flow-next').textContent=s.mode==='free'?'自由开发：按需查看材料、改动和验证，不设置教学关卡。':flowHints[s.stage];if($('flow-review-dialog').open&&!$('flow-proposals').contains(document.activeElement))renderFlowReview();if($('flow-delivery-dialog').open)renderFlowDelivery();renderQueuedRetries()};
-function renderQueuedRetries(){let box=$('flow-queue-retries');if(!box){box=document.createElement('div');box.id='flow-queue-retries';$('flow-next').after(box)}box.replaceChildren();for(const row of task.messages.filter(m=>m.queue_status==='needs_retry'))box.append(flowButton('重试已保存消息：'+row.content.slice(0,28),async()=>{task=await api('/tasks/'+task.id+'/chat/retry',{request_id:row.request_id});render();pollChat()}))}
+window.renderWorkflow=()=>{
+ const s=task.workflow;
+ if(!s)return;
+ renderTeachingReferences();
+ renderLessonSelection();
+ $('flow-adopt').disabled=!task.teaching?.turns?.length;
+ if(task.mode==='opencode'){
+  const feature=s.features?.find(r=>r.id===s.current_feature_id);
+  $('course-overview').textContent='项目阶段：'+workflowStages[s.stage]+' · 当前功能：'+(feature?.title||'尚未选定');
+ }
+ const queued=task.messages.filter(m=>m.queue_status==='queued').length;
+ $('flow-status').textContent=workflowStages[s.stage]+(queued?' · 排队 '+queued+' 条':'');
+ $('flow-next').textContent=s.mode==='free'?'自由开发，可按需记录材料和验证结果。':flowHints[s.stage]||'';
+ if($('flow-review-dialog').open&&!$('flow-proposals').contains(document.activeElement))renderFlowReview();
+ if($('flow-delivery-dialog').open)renderFlowDelivery();
+};
 $('flow-review').onclick=()=>{$('flow-mode').value=task.workflow.mode;$('flow-auto').checked=task.workflow.auto_organize;renderFlowReview();$('flow-review-dialog').showModal()};
 $('flow-organize').onclick=()=>perform(()=>api('/tasks/'+task.id+'/workflow/organize',{}));
 $('flow-options').onclick=()=>perform(()=>api('/tasks/'+task.id+'/workflow/options',{mode:$('flow-mode').value,auto_organize:$('flow-auto').checked}));
-$('flow-adopt').onclick=()=>{const r=[...task.messages].reverse().find(m=>m.channel==='teaching'&&m.role==='assistant');if(!r)return toast('还没有教师建议');$('coding-input').value='请结合以下建议，我会先检查和调整范围：'+r.content;$('coding-input').focus();toast('已填入，请检查后自行发送')};
+$('flow-adopt').onclick=()=>{
+ const reply=task.messages.findLast(m=>m.channel==='teaching'&&m.role==='assistant');
+ if(!reply)return;
+ if(document.querySelector('.floating-coding.is-minimized'))$('coding-minimize').click();
+ $('coding-input').value='请结合以下建议，我会先检查和调整范围：'+reply.content;
+ $('coding-input').focus();
+ toast('教学建议已填入 Coding 输入框');
+};
 async function listStudents(){const list=await api('/students');$('flow-student-select').replaceChildren();for(const s of list)$('flow-student-select').add(new Option(s.name,s.id));if(task.workflow.student_id)$('flow-student-select').value=task.workflow.student_id}
 $('flow-student').onclick=()=>flowSafe(async()=>{await listStudents();$('flow-promote-rules').replaceChildren();for(const r of task.workflow.rules||[]){if(r.status!=='active')continue;const label=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.value=r.id;label.append(check,document.createTextNode(r.title));$('flow-promote-rules').append(label)}$('flow-student-dialog').showModal()});
 $('flow-student-create').onclick=()=>flowSafe(async()=>{const p=await api('/students',{name:$('flow-student-name').value});await listStudents();$('flow-student-select').value=p.id});
@@ -57,18 +78,61 @@ $('flow-feature-accept').onclick=()=>perform(()=>api('/tasks/'+task.id+'/workflo
 $('workflow-history').onchange=()=>{const row=task.workflow.materials[$('workflow-kind').value].find(r=>String(r.revision)===$('workflow-history').value);if(row){$('workflow-content').value=row.content;$('workflow-material-status').textContent='正在查看历史 v'+row.revision+'；保存或确认将创建新版本'}};
 
 
+function renderLessonSelection(){
+ const library=task.teaching_library;
+ const ids=library?.suggested_lesson_ids||[];
+ const titles=ids.map(id=>library.topics.find(card=>card.id===id)?.title).filter(Boolean);
+ $('lesson-selection').textContent=titles.length?'建议学习：'+titles.join('、'):'你可以直接提问，或选择一张课卡。';
+}
+
+function requestLesson(id){
+ return perform(()=>api('/tasks/'+task.id+'/teaching/resources',{lesson_id:id,choice:'learn'}));
+}
+
 function renderTeachingLibrary(){
- const library=task.teaching_library,host=$('knowledge-topics');host.replaceChildren();
+ const library=task.teaching_library,host=$('knowledge-topics');
+ const previous=$('teaching-library-choice');
+ const selected=host.dataset.projectId===task.id?previous?.value:null;
+ const restoreFocus=document.activeElement===previous;
  const prefs=library.preferences||{},ids=library.suggested_lesson_ids||[];
- const note=document.createElement('p');note.className='library-note';note.textContent='按当前问题提供选学，不影响聊天和开发。';host.append(note);
- for(const id of ids){const card=library.topics.find(c=>c.id===id);if(!card)continue;const row=document.createElement('div');row.className='knowledge-topic';const label=document.createElement('span');label.textContent=card.title+(prefs.focus_lesson_id===id?' · 已选择':'');row.append(label);for(const [choice,title] of [['learn','学一下'],['later','稍后']]){const button=document.createElement('button');button.textContent=title;button.disabled=busy;button.onclick=()=>perform(()=>api('/tasks/'+task.id+'/teaching/resources',{lesson_id:id,choice}));row.append(button)}host.append(row)}
- const select=document.createElement('select');select.id='teaching-library-choice';select.setAttribute('aria-label','选择项目教学主题');for(const card of library.topics)select.add(new Option(card.title+(prefs.deferred_lesson_ids?.includes(card.id)?' · 稍后':''),card.id));if(prefs.focus_lesson_id)select.value=prefs.focus_lesson_id;
- const start=document.createElement('button');start.id='teaching-library-learn';start.textContent='了解所选';start.disabled=busy;start.onclick=()=>perform(()=>api('/tasks/'+task.id+'/teaching/resources',{lesson_id:select.value,choice:'learn'}));
- const auto=document.createElement('button');auto.id='teaching-library-auto';auto.textContent='回到按需建议';auto.disabled=busy;auto.onclick=()=>perform(()=>api('/tasks/'+task.id+'/teaching/resources',{choice:'auto'}));const preview=document.createElement('button');preview.textContent='查看所选课卡';preview.onclick=()=>showLessonCard(select.value);host.append(select,preview,start,auto);
+ host.dataset.projectId=task.id;
+ host.replaceChildren();
+
+ const note=document.createElement('p');
+ note.textContent=ids.length?'建议学习 '+ids.map(id=>library.topics.find(card=>card.id===id)?.title).filter(Boolean).join('、'):'可以选择一个与当前项目有关的主题。';
+ host.append(note);
+
+ const label=document.createElement('label');
+ label.htmlFor='teaching-library-choice';
+ label.textContent='课卡主题';
+ const select=document.createElement('select');
+ select.id='teaching-library-choice';
+ for(const card of library.topics){
+  const deferred=prefs.deferred_lesson_ids?.includes(card.id);
+  select.add(new Option(card.title+(deferred?' · 稍后':''),card.id));
+ }
+ const wanted=selected||prefs.focus_lesson_id||ids[0];
+ if(library.topics.some(card=>card.id===wanted))select.value=wanted;
+ host.append(label,select);
+
+ const actions=document.createElement('div');
+ actions.className='teaching-actions';
+ actions.append(
+  flowButton('预览所选课卡',()=>showLessonCard(select.value)),
+  flowButton('请学习助手讲解',()=>{$('lesson-topics-dialog').close();return requestLesson(select.value)}),
+  flowButton('稍后再学',()=>perform(()=>api('/tasks/'+task.id+'/teaching/resources',{lesson_id:select.value,choice:'later'}))),
+  flowButton('恢复自动推荐',()=>perform(()=>api('/tasks/'+task.id+'/teaching/resources',{choice:'auto'})))
+ );
+ actions.children[1].id='teaching-library-learn';
+ actions.children[2].id='teaching-library-later';
+ actions.children[3].id='teaching-library-auto';
+ for(const button of Array.from(actions.children).slice(1))button.disabled=busy;
+ host.append(actions);
+ if(restoreFocus)select.focus();
 }
 function renderTeachingReferences(){
  const host=$('teaching-reference-list');if(!host||!task)return;host.replaceChildren();const library=task.teaching_library,trace=library?.last_turn;
- if(!trace){host.textContent='本轮尚无资料提交记录；选学资料不会自动认证掌握。';return}
+ if(!trace){host.textContent='完成一轮教学后，这里会显示该轮参考的课卡和来源。';return}
  const title=document.createElement('p');title.textContent=(trace.submitted_to_model?'最近一轮已提供给模型：':'最近一轮为示例，未提交模型：')+(trace.lesson_ids?.map(id=>trace.lessons?.find(c=>c.id===id)?.title||library.topics.find(c=>c.id===id)?.title||id).join('、')||'通用教学指导');host.append(title);
  for(const id of [...new Set([...(trace.source_ids||[]),...(trace.policy_source_ids||[])])]){const source=[...(trace.sources||[]),...(trace.policy_sources||[]),...library.sources].find(s=>s.id===id);if(!source||!source.url.startsWith('https://'))continue;const p=document.createElement('p'),a=document.createElement('a');a.href=source.url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=source.title;p.append(a);host.append(p)}
  const status=document.createElement('small');status.textContent='资料版本 '+trace.revision+'；提供资料不代表模型实际采用或学生掌握。';host.append(status);
@@ -85,8 +149,18 @@ async function showLessonCard(id){
  for(const [key,label] of [['concept_explanation','概念讲解'],['illustrative_example','例子'],['suggested_checks','检查要点'],['student_activity','可以尝试的练习'],['transfer_prompt','换个场景想一想']]){
   const section=document.createElement('section'),h=document.createElement('h3'),body=document.createElement('div');h.textContent=label;body.style.whiteSpace='pre-wrap';body.textContent=Array.isArray(card[key])?card[key].join('\n'):card[key]||'';section.append(h,body);dialog.append(section);
  }
- const learn=document.createElement('button');learn.textContent='请 Teacher 讲这张卡';learn.onclick=async()=>{dialog.close();await perform(()=>api('/tasks/'+task.id+'/teaching/resources',{lesson_id:id,choice:'learn'}))};
+const learn=document.createElement('button');
+ learn.type='button';
+ learn.textContent='请学习助手讲解';
+ learn.onclick=()=>{
+  dialog.close();
+  $('lesson-topics-dialog').close();
+  return requestLesson(id);
+ };
  const close=document.createElement('button');close.textContent='关闭';close.onclick=()=>dialog.close();dialog.append(learn,close);dialog.showModal();
  }catch(e){toast(e.message)}
 }
-const lessonEntry=document.createElement('button');lessonEntry.id='open-lesson-cards';lessonEntry.textContent='查看教学课卡';lessonEntry.onclick=()=>{const library=task?.teaching_library;const id=library?.preferences?.focus_lesson_id||library?.suggested_lesson_ids?.[0]||library?.topics?.[0]?.id;if(id)showLessonCard(id);else toast('请先打开项目，加载教学主题')};document.querySelector('.teacher-head')?.append(lessonEntry);
+$('open-lesson-cards').onclick=()=>{
+ if(task)$('lesson-topics-dialog').showModal();
+};
+$('close-lesson-topics').onclick=()=>$('lesson-topics-dialog').close();

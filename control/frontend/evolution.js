@@ -2,6 +2,9 @@
 (() => {
  const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n};
  const dialog=el('dialog',undefined,'experience-library');dialog.id='experience-dialog';document.body.append(dialog);
+ const evaluationDialog=document.getElementById('teaching-evaluation-dialog');
+ const evaluationContent=document.getElementById('teaching-evaluation-content');
+ let evaluationProjectId=null;
  let book=null,pending=false,lastKey='',highlight=true;
  const expanded=new Set();
  const labels={active:'初始教法',trial:'待验证',candidate:'候选',inactive:'已停用'};
@@ -12,9 +15,20 @@
  const note=el('p','', 'library-notice');note.setAttribute('role','status');
  async function refresh(force=false){
   try{
-   const next=await api('/experience-library'),key=JSON.stringify([next.revision,next.project_names,next.project_runs,next.trial_observations,next.uses?.length,task?.id]);book=next;
-   if(force||key!==lastKey){lastKey=key;draw()}
-  }catch(e){note.textContent=e.message}
+   const next=await api('/experience-library'),key=JSON.stringify([next.revision,next.batches?.length,next.project_names,next.project_runs,next.trial_observations,next.uses?.length,task?.id]);book=next;
+   if(force||key!==lastKey||(evaluationDialog.open&&!evaluationContent.dataset.key)){
+    lastKey=key;
+    if(note.textContent==='正在加载教法经验库…')note.textContent='';
+    if(dialog.open)draw();
+    if(evaluationDialog.open)drawEvaluation();
+   }
+  }catch(e){
+   if(dialog.open)note.textContent=e.message;
+   if(evaluationDialog.open){
+    delete evaluationContent.dataset.key;
+    evaluationContent.replaceChildren(el('p','暂时无法读取教学评价。'+e.message));
+   }
+  }
  }
  async function change(body){
   if(pending)return;pending=true;note.textContent='';
@@ -50,6 +64,24 @@
   for(const item of batch.evidence||[])sources.append(el('pre',JSON.stringify(item,null,2)));
   scores.append(sources);host.append(scores);
  }
+ function drawEvaluation(){
+  const title=book.project_names?.[evaluationProjectId]||'当前项目';
+  const batch=book.batches.findLast(b=>b.project_id===evaluationProjectId&&b.review);
+  const run=book.project_runs?.find(p=>p.project_id===evaluationProjectId)?.run;
+  const key=JSON.stringify([title,batch?.id,run?.status,run?.detail]);
+  if(evaluationContent.dataset.key===key)return;
+  evaluationContent.dataset.key=key;
+  evaluationContent.replaceChildren(el('p',title));
+  if(run?.status==='running'||run?.status==='failed'){
+   evaluationContent.append(el('p',run.detail||'正在整理或评价教学证据。'));
+  }
+  if(!batch){
+   evaluationContent.append(el('p','尚无已保存的评价。学习区的回答和项目验证记录会作为评价证据。'));
+   return;
+  }
+  evaluationContent.append(el('p','最近一次评价 · '+stamp(batch.created_at)));
+  evidence(evaluationContent,batch);
+ }
  function significant(changeItem){
   const before=changeItem.before,after=changeItem.after;
   return !before||!after||['title','when','action','verify','limits','status','tags'].some(k=>JSON.stringify(before[k])!==JSON.stringify(after[k]));
@@ -68,19 +100,24 @@
   const verb=lastChange?.after?.status==='inactive'?'停用':'修改';
   return {batches,updated:latest?.after_revision??0,added,changed,verb,source};
  }
- function entriesView(main){
+ function reflectionChanges(){
+  const batch=book.batches.findLast(b=>b.kind==='reflection'&&b.changes.some(significant));
+  return (batch?.changes||[]).filter(c=>!c.undone&&significant(c));
+ }
+ function entriesView(main,changes){
   const rows=el('div',undefined,'library-matrix');
-  const latest=[...book.batches].reverse().find(b=>b.changes.some(significant));
-  const currentIds=new Set((latest?.changes||[]).filter(significant).map(c=>c.entry_id));
+  const currentIds=new Set(changes.map(c=>c.entry_id));
   const entries=book.entries.map((entry,index)=>({entry,index,meta:entryMeta(entry)}))
    .sort((a,b)=>b.meta.updated-a.meta.updated||b.index-a.index);
   if(!entries.length)rows.append(el('p','尚无经验。'));
   for(const {entry,meta} of entries){
    const card=details('');card.className='library-entry';card.dataset.entryId=entry.id;
-   card.dataset.version=meta.updated;card.classList.toggle('is-current-change',highlight&&currentIds.has(entry.id));
+   card.dataset.version=meta.updated;card.classList.toggle('is-current-change',currentIds.has(entry.id));
    card.open=expanded.has(entry.id);card.ontoggle=()=>{if(card.open)expanded.add(entry.id);else expanded.delete(entry.id)};
    const summary=card.firstChild;summary.replaceChildren(el('strong',entry.title),el('small',
-    meta.added+' · 加入'+(meta.changed?'\n'+meta.changed+' · '+meta.verb:'')));
+    meta.added+' · 加入'+(meta.changed?'\n'+meta.changed+' · '+meta.verb:'')+
+    (entry.status==='active'?'':' · '+(labels[entry.status]||entry.status))));
+   if(currentIds.has(entry.id))summary.append(el('span','最近反思变更','library-change-badge'));
    const content=el('div',undefined,'library-entry-content');textFields(content,entry);
    content.append(el('p','加入来源：'+meta.added));
    if(meta.changed)content.append(el('p','最近'+meta.verb+'：'+meta.changed));
@@ -121,17 +158,43 @@
  function draw(){
   const scroll=dialog.scrollTop;dialog.replaceChildren();
   const header=el('div',undefined,'library-header');
-  const toggle=btn('本轮经验变更',()=>{highlight=!highlight;draw()},'library-highlight-toggle');
-  toggle.setAttribute('aria-pressed',String(highlight));
-  const close=btn('×',()=>dialog.close(),'library-close');close.setAttribute('aria-label','关闭经验库');
-  header.append(el('h2','经验库'),toggle,close);dialog.append(header,note);
-  const main=el('main');entriesView(main);dialog.append(main);dialog.scrollTop=scroll;
+  const changes=book?reflectionChanges():[];
+  const toggle=btn(changes.length?'高亮最近反思':'暂无反思变更',()=>{highlight=!highlight;setHighlight()},'library-highlight-toggle');
+  toggle.disabled=!changes.length;
+  const setHighlight=()=>{
+   const active=highlight&&changes.length>0;
+   toggle.setAttribute('aria-pressed',String(active));
+   dialog.classList.toggle('show-reflection-changes',active);
+  };
+  setHighlight();
+  const close=btn('×',()=>dialog.close(),'library-close');close.setAttribute('aria-label','关闭教法经验库');
+  header.append(el('h2','教法经验库'),toggle,close);dialog.append(header,note);
+  const main=el('main');
+  if(book)entriesView(main,changes);
+  dialog.append(main);dialog.scrollTop=scroll;
  }
- async function open(){if(!dialog.open){highlight=true;expanded.clear()}await refresh(true);if(!dialog.open)dialog.showModal()}
+ function open(){
+  if(dialog.open)return;
+  highlight=true;
+  expanded.clear();
+  note.textContent=book?'':'正在加载教法经验库…';
+  draw();
+  dialog.showModal();
+  refresh(true);
+ }
  document.getElementById('evolution-open').onclick=open;
- const settings=document.getElementById('settings-dialog');const settingsButton=btn('打开经验库',()=>{settings.close();open()});settingsButton.id='experience-open';settings.append(settingsButton);
- window.renderTeachingEvolution=()=>{if(dialog.open)refresh()};
- setInterval(()=>{if(dialog.open)refresh()},1800);
+ document.getElementById('experience-open').onclick=open;
+ document.getElementById('teaching-evaluation-open').onclick=()=>{
+  if(!task)return;
+  evaluationProjectId=task.id;
+  delete evaluationContent.dataset.key;
+  evaluationContent.replaceChildren(el('p','正在读取本项目的教学评价…'));
+  evaluationDialog.showModal();
+  refresh(true);
+ };
+ document.getElementById('close-teaching-evaluation').onclick=()=>evaluationDialog.close();
+ window.renderTeachingEvolution=()=>{if(dialog.open||evaluationDialog.open)refresh()};
+ setInterval(window.renderTeachingEvolution,1800);
  const limitSettings=document.createElement('details');limitSettings.id='model-timeouts';
  limitSettings.append(document.createElement('summary'));limitSettings.firstChild.textContent='模型超时（秒）';
  const limitFields={teacher_request_seconds:'Teacher单次请求',teacher_total_seconds:'Teacher整轮回复',background_request_seconds:'后台单次请求',background_total_seconds:'后台整批评价与反思'};
@@ -141,6 +204,7 @@
  const limitNote=document.createElement('p');limitNote.textContent='下一次请求生效；超时保留消息，不无限重试。后台总时限包含评价和反思。';
  const loadLimits=async()=>{try{const health=await api('/health');for(const [key,input] of Object.entries(limitInputs))input.value=health.model_timeouts?.[key]??''}catch(e){limitNote.textContent=e.message}};
  limitSave.onclick=async()=>{try{const value=Object.fromEntries(Object.entries(limitInputs).map(([key,input])=>[key,Number(input.value)]));await api('/settings/timeouts',value);limitNote.textContent='已保存，下次任务生效；当前请求不强制中断。'}catch(e){limitNote.textContent=e.message}};
- limitSettings.append(limitNote,limitSave);document.getElementById('settings-dialog').append(limitSettings);
+ limitSettings.append(limitNote,limitSave);
+ document.querySelector('#settings-dialog .dialog-actions').before(limitSettings);
  document.getElementById('open-settings').addEventListener('click',loadLimits);
 })();
